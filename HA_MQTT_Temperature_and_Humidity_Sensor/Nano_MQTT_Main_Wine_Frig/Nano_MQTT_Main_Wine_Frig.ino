@@ -110,13 +110,6 @@ void setup() {
   Serial.begin(115200);
   Log.begin(LOG_LEVEL, &Serial);
 
-  delay(2000);
-  unsigned long time_before_print = millis();
-  Log.info("Create a very large print statement....alskdjf;laskjdf;laksdjf;laksjdf;laksjdf;laksjdf;lkjasd;lfkjas;ldfkja;lskjdf;lasjdf;laksjdfl;kjasdf;lkjasd;lfja;sldkjf;alskdjf;laskjdf;laksjdf;lkajsd;lfkjas;lkdjf;lkasjdf;lksadjfl;kjdsa;lfjasdklfjas;dlkjf" CR);
-  Serial.print(millis()-time_before_print);
-  Serial.println(" ms delta time.");
-
-
   // attempt to connect to WiFi network:
   Log.info(CR "Attempting to connect to WPA SSID: %s" CR, ssid);
   WiFi.begin(ssid, pass);
