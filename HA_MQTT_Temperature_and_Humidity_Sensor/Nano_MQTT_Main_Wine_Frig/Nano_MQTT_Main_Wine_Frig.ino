@@ -27,6 +27,15 @@
 //#  
 //#   Description : 
 //#
+//#     Set the logging level define below.  E.G.: LOG_LEVEL = LOG_LEVEL_SILENT
+//#       * 0 - LOG_LEVEL_SILENT     no output 
+//#       * 1 - LOG_LEVEL_FATAL      fatal errors 
+//#       * 2 - LOG_LEVEL_ERROR      all errors  
+//#       * 3 - LOG_LEVEL_WARNING    errors, and warnings 
+//#       * 4 - LOG_LEVEL_NOTICE     errors, warnings and notices 
+//#       * 5 - LOG_LEVEL_TRACE      errors, warnings, notices & traces 
+//#       * 6 - LOG_LEVEL_VERBOSE    all 
+//#
 //#
 //#
 //#           
@@ -45,54 +54,79 @@
 #include "arduino_secrets.h"
 #include "Wire.h"
 #include "SHT31.h"
+#include "ArduinoLog.h"
 
 
-#define SHT31_ADDRESS   0x44
-SHT31 sht;
+//*********************************************************************
+//    System Parameters
+//*********************************************************************
 
-///////please enter your sensitive data in the Secret tab/arduino_secrets.h
+// Log Level (see note above)
+// Set to VERBOSE during development, then SILENT for operation
+#define LOG_LEVEL LOG_LEVEL_VERBOSE
+//#define LOG_LEVEL LOG_LEVEL_SILENT
+
+// MQTT Broker
+// To connect with SSL/TLS:
+// 1) Change WiFiClient to WiFiSSLClient.
+// 2) Change port value from 1883 to 8883.
+// 3) Change broker value to a server with a known SSL/TLS root certificate 
+//    flashed in the WiFi module.
+const char broker[]       = "nuc-sdr";
+int        port           = 1883;
+const char topicTemp[]    = "wine_frig/main/temperature";
+const char topicHumid[]   = "wine_frig/main/humidity";
+
+
+// Network Settings found in "arduino_secrets.h" file
 char ssid[] = SECRET_SSID;    // your network SSID (name)
 char pass[] = SECRET_PASS;    // your network password (use for WPA, or use as key for WEP)
 
 char mqtt_user[] = SECRET_MQTT_USER;
 char mqtt_pass[] = SECRET_MQTT_PASS;
 
-// To connect with SSL/TLS:
-// 1) Change WiFiClient to WiFiSSLClient.
-// 2) Change port value from 1883 to 8883.
-// 3) Change broker value to a server with a known SSL/TLS root certificate 
-//    flashed in the WiFi module.
 
+// Update Rate in ms
+const long UPDATE_RATE_MS = 2000;
+
+// I2C Address for SHT31 device.  Not need to update
+#define SHT31_ADDRESS   0x44
+SHT31 sht;
+
+
+
+//*********************************************************************
+//    Setup Function
+//*********************************************************************
+
+// Define WiFi
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
 
-
-const char broker[]       = "nuc-sdr";
-int        port           = 1883;
-const char topicTemp[]    = "wine_frig/main/temperature";
-const char topicHumid[]   = "wine_frig/main/humidity";
-
-const long interval       = 2000;
-
 unsigned long previousMillis = 0;
-
 
 void setup() {
   //Initialize serial and wait for port to open:
   Serial.begin(115200);
+  Log.begin(LOG_LEVEL, &Serial);
+
+  delay(2000);
+  unsigned long time_before_print = millis();
+  Log.info("Create a very large print statement....alskdjf;laskjdf;laksdjf;laksjdf;laksjdf;laksjdf;lkjasd;lfkjas;ldfkja;lskjdf;lasjdf;laksjdfl;kjasdf;lkjasd;lfja;sldkjf;alskdjf;laskjdf;laksjdf;lkajsd;lfkjas;lkdjf;lkasjdf;lksadjfl;kjdsa;lfjasdklfjas;dlkjf" CR);
+  Serial.print(millis()-time_before_print);
+  Serial.println(" ms delta time.");
+
 
   // attempt to connect to WiFi network:
-  Serial.print("Attempting to connect to WPA SSID: ");
-  Serial.println(ssid);
+  Log.info(CR "Attempting to connect to WPA SSID: %s" CR, ssid);
   WiFi.begin(ssid, pass);
   while (WiFi.status() != WL_CONNECTED) {
     // failed, retry
-    Serial.print(".");
+    Log.info(F("."));
     delay(1000);
   }
 
-  Serial.print("You're connected to the network: ");
-  Serial.println(WiFi.localIP());
+  Log.info(CR "You're connected to the network: %s" CR, WiFi.localIP());
 
   // You can provide a unique client ID, if not set the library uses Arduino-millis()
   // Each client must have a unique client ID
@@ -102,18 +136,15 @@ void setup() {
   // You can provide a username and password for authentication
   mqttClient.setUsernamePassword(mqtt_user, mqtt_pass);
 
-  Serial.print("Attempting to connect to the MQTT broker: ");
-  Serial.println(broker);
+  Log.info("Attempting to connect to the MQTT broker: %s" CR, broker);
 
   if (!mqttClient.connect(broker, port)) {
-    Serial.print("MQTT connection failed! Error code = ");
-    Serial.println(mqttClient.connectError());
+    Log.warning("MQTT connection failed! Error code = %s" CR, mqttClient.connectError());
 
     while (1);
   }
 
-  Serial.println("You're connected to the MQTT broker!");
-  Serial.println();
+  Log.info(F("You're connected to the MQTT broker!" CR));
 
   // setup Temperature and Humidity SHT31-D
   Wire.begin();
@@ -121,6 +152,9 @@ void setup() {
   sht.begin();
 }
 
+//*********************************************************************
+//    Loop Function
+//*********************************************************************
 void loop() {
   // call poll() regularly to allow the library to send MQTT keep alives which
   // avoids being disconnected by the broker
@@ -130,7 +164,7 @@ void loop() {
   // see: File -> Examples -> 02.Digital -> BlinkWithoutDelay for more info
   unsigned long currentMillis = millis();
   
-  if (currentMillis - previousMillis >= interval) {
+  if (currentMillis - previousMillis >= UPDATE_RATE_MS) {
     // save the last time a message was sent
     previousMillis = currentMillis;
 
@@ -138,16 +172,13 @@ void loop() {
     bool sht_success = sht.read(false);
     sht.requestData(); 
     if(sht_success == false) {
-      Serial.println("FAILED: Unable to Read SHT");
+      Log.fatal(F("FAILED: Unable to Read SHT" CR));
     }
     float sht_temp = sht.getFahrenheit();
-    Serial.print(sht_temp);
-    Serial.print(" F\t");
     float sht_humid = sht.getHumidity();
-    Serial.print(sht_humid);
-    Serial.println(" %");
+    Log.info("Temp: %F, Humidity %F" CR,sht_temp, sht_humid);
 
-    // Sent Temperature and Humidity to HA-MQTT
+    // Send Temperature and Humidity to HA-MQTT
     mqttClient.beginMessage(topicTemp, false, 0, false);
     mqttClient.print(sht_temp);
     mqttClient.endMessage();
@@ -159,17 +190,16 @@ void loop() {
     // Not sure if this is required, but checking
     // if the ESP32 is connected to MQTT broker.
     // When not connected, then reconnects.
-    Serial.print("Check MQTT Connection: ");
+    Log.info(F("Check MQTT Connection..." CR));
     if(!mqttClient.connected()) {
-      Serial.println("Disconnected, trying to connect...");
+      Log.warning(F("Disconnected, trying to connect..."));
       if (!mqttClient.connect(broker, port)) {
-        Serial.println("FAILED to reconnect to MQTT");
+        Log.fatal(F("FAILED to reconnect to MQTT" CR));
       } else {
-        Serial.println("Successfully reconnected to MQTT");
+        Log.info(F("Successfully reconnected to MQTT" CR));
       }
     } else {
-      Serial.println("Connected");
+      Log.info(F("Connected." CR));
     }
-    Serial.println(" ");
   }
 }
