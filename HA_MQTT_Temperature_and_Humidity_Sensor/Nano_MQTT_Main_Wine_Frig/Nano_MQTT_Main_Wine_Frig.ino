@@ -63,8 +63,8 @@
 
 // Log Level (see note above)
 // Set to VERBOSE during development, then SILENT for operation
-#define LOG_LEVEL LOG_LEVEL_VERBOSE
-//#define LOG_LEVEL LOG_LEVEL_SILENT
+//#define LOG_LEVEL LOG_LEVEL_VERBOSE
+#define LOG_LEVEL LOG_LEVEL_SILENT
 
 // MQTT Broker
 // To connect with SSL/TLS:
@@ -76,7 +76,7 @@ const char broker[]       = "nuc-sdr";
 int        port           = 1883;
 const char topicTemp[]    = "wine_frig/main/temperature";
 const char topicHumid[]   = "wine_frig/main/humidity";
-
+uint8_t    MQTT_QoS       = 1; // 0:Best Effort, 1:Received ACK, 2:SND/ACK/SND/ACK
 
 // Network Settings found in "arduino_secrets.h" file
 char ssid[] = SECRET_SSID;    // your network SSID (name)
@@ -172,11 +172,11 @@ void loop() {
     Log.info("Temp: %F, Humidity %F" CR,sht_temp, sht_humid);
 
     // Send Temperature and Humidity to HA-MQTT
-    mqttClient.beginMessage(topicTemp, false, 0, false);
+    mqttClient.beginMessage(topicTemp, false, MQTT_QoS, false);
     mqttClient.print(sht_temp);
     mqttClient.endMessage();
 
-    mqttClient.beginMessage(topicHumid, false, 0, false);
+    mqttClient.beginMessage(topicHumid, false, MQTT_QoS, false);
     mqttClient.print(sht_humid);
     mqttClient.endMessage();
 
