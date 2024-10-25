@@ -1,8 +1,8 @@
-
-
-
+**Documentation is In-Progress**
 
 # XIAO MQTT Battery Temperature and Humidity Sensor
+
+Using the XIAO for a battery operated temperature and humidity sensor.  The goal is to operate this sensor for 6 months using a 1400 mAh battery.  A 750 mAh battery is being used for the initial design release with a 3 month operation goal.  I initially was operating the sensor without using the deep sleep mode to validate the initial battery life calculations.  The latest update committed to the repository has deep sleep implemented.  
 
 ![assembled](./doc/assembled.jpg)
 
@@ -31,7 +31,7 @@ Source: https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/
 
 ### Battery Life Reading
 
-Used 300Kohm resistors in series with the ADC A0 attached to the voltage divider circuit.  Read the voltage
+Used 300Kohm resistors in series with the ADC A0 attached to the voltage divider circuit.  
 
 Source: https://forum.seeedstudio.com/t/battery-voltage-monitor-and-ad-conversion-for-xiao-esp32c/267535
 
@@ -39,37 +39,45 @@ Source: https://forum.seeedstudio.com/t/battery-voltage-monitor-and-ad-conversio
 
 ## Battery Testing
 
-Power Consumption with battery removed, and running with wall power.  Idle Mode: 0.153W (0.0306A)
+The XIAO has on-board battery charging circuit with protection circuit.  It seems to work like a normal battery pack, a red LED is on while charging and will turn off when the battery is charged.  Home Assistant reports a full charge is 81.5%, and the device stops operating at ~53%.  An update will be made in the next firmware release to scale this correctly.
+
+Power Consumption with battery removed, and running with wall power using a USB power meter.  
+
+Idle Mode: 0.153W (0.0306A).  
+
+Transmitting a MQTT message: 1.24W (0.248A). 
+
+The USB power meter used measures 0W while in deep sleep.
 
 
 
-### 750mAh Battery Test
+### 750mAh Battery Test without Deep Sleep
 
-| Parameter Description                  | Value        |
-| -------------------------------------- | ------------ |
-| Battery Capacity                       | 750 mAh      |
-| Device Consumption During MQTT Message | 278 mA       |
-| Device Consumption Idle                | 28 mA        |
-| Transmit Duration                      | 10 ms        |
-| Device Idle Duration                   | 990 ms       |
-| Estimated Battery Life                 | 20.517 hours |
-
-
-
-### 1400mAh Battery Test
-
-| Parameter Description                  | Value      |
-| -------------------------------------- | ---------- |
-| Battery Capacity                       | 1400 mAh   |
-| Device Consumption During MQTT Message | 278 mA     |
-| Device Consumption Idle                | 28 mA      |
-| Transmit Duration                      | 10 ms      |
-| Device Idle Duration                   | 990 ms     |
-| Estimated Battery Life                 | 38.3 hours |
+| Parameter Description                  | Value     |
+| -------------------------------------- | --------- |
+| Battery Capacity                       | 750 mAh   |
+| Device Consumption During MQTT Message | 278 mA    |
+| Device Consumption Idle                | 28 mA     |
+| Transmit Duration                      | 80 ms     |
+| Device Idle Duration                   | 920 ms    |
+| Estimated Battery Life                 | ~20 hours |
 
 
 
-## Measuring Message Duration
+### 1400mAh Battery Test without Deep Sleep
+
+| Parameter Description                  | Value     |
+| -------------------------------------- | --------- |
+| Battery Capacity                       | 1400 mAh  |
+| Device Consumption During MQTT Message | 278 mA    |
+| Device Consumption Idle                | 28 mA     |
+| Transmit Duration                      | 80 ms     |
+| Device Idle Duration                   | 920 ms    |
+| Estimated Battery Life                 | ~38 hours |
+
+
+
+#### Measuring Message Duration
 
 Measured duration to send the MQTT message including the following lines of code:
 
