@@ -39,6 +39,10 @@ Source: https://forum.seeedstudio.com/t/battery-voltage-monitor-and-ad-conversio
 
 ## Battery Testing
 
+Power Consumption with battery removed, and running with wall power.  Idle Mode: 0.153W (0.0306A)
+
+
+
 ### 750mAh Battery Test
 
 | Parameter Description                  | Value        |
@@ -97,3 +101,17 @@ Message Time: 74 ms
 Message Time: 75 ms
 ```
 
+
+
+### Manually Downloading Updates
+
+```bash
+C:\Users\eston\AppData\Local\Programs\Arduino IDE\resources\app\lib\backend\resources>arduino-cli.exe core update-index
+
+Remove:
+https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+```
+
+
+
+Note:  Closing the `Serial Monitor` will resolve the update hang issue.
