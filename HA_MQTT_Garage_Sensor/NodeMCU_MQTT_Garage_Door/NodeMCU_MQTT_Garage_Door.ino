@@ -43,31 +43,32 @@
 #include "UltrasonicHCSR04.h"
 #include "Wire.h"
 #include "SHT31.h"
+#include "ArduinoLog.h"
 
+
+//*********************************************************************
+//    System Parameters
+//*********************************************************************
+
+// Log Level (see note above)
+// Set to VERBOSE during development, then SILENT for operation
+//#define LOG_LEVEL LOG_LEVEL_VERBOSE
+#define LOG_LEVEL LOG_LEVEL_SILENT
 
 #define SHT31_ADDRESS   0x44
 SHT31 sht;
 
 // Setup HC-SR04 Device
-const int trigPin = D3; // GPIO-6
-const int echoPin = D2; // GPIO-5
+const int trigPin = 12; // GPIO-12
+const int echoPin = 13; // GPIO-13
 UltrasonicHCSR04 distSensor(trigPin, echoPin);
 
-///////please enter your sensitive data in the Secret tab/arduino_secrets.h
+// arduino_secrets.h
 char ssid[] = SECRET_SSID;    // your network SSID (name)
 char pass[] = SECRET_PASS;    // your network password (use for WPA, or use as key for WEP)
 
 char mqtt_user[] = SECRET_MQTT_USER;
 char mqtt_pass[] = SECRET_MQTT_PASS;
-
-// To connect with SSL/TLS:
-// 1) Change WiFiClient to WiFiSSLClient.
-// 2) Change port value from 1883 to 8883.
-// 3) Change broker value to a server with a known SSL/TLS root certificate 
-//    flashed in the WiFi module.
-
-WiFiClient wifiClient;
-MqttClient mqttClient(wifiClient);
 
 
 const char broker[]       = "nuc-sdr";
@@ -75,27 +76,40 @@ int        port           = 1883;
 const char topicStatus[]  = "garage/door";
 const char topicTemp[]    = "garage/temperature";
 const char topicHumid[]   = "garage/humidity";
+uint8_t    MQTT_QoS       = 1; // 0:Best Effort, 1:Received ACK, 2:SND/ACK/SND/ACK
 
-const long interval = 2000;
+const long interval = 2000; // update rate 2sec
+
+//*********************************************************************
+//    System Setup
+//*********************************************************************
+
+// To connect with SSL/TLS:
+// 1) Change WiFiClient to WiFiSSLClient.
+// 2) Change port value from 1883 to 8883.
+// 3) Change broker value to a server with a known SSL/TLS root certificate 
+//    flashed in the WiFi module.
+WiFiClient wifiClient;
+MqttClient mqttClient(wifiClient);
+
+float distance = 0.0;
 unsigned long previousMillis = 0;
-
 
 void setup() {
   //Initialize serial and wait for port to open:
   Serial.begin(115200);
+  Log.begin(LOG_LEVEL, &Serial);
 
   // attempt to connect to WiFi network:
-  Serial.print("Attempting to connect to WPA SSID: ");
-  Serial.println(ssid);
+  Log.info(CR "Attempting to connect to WPA SSID: %s, " CR,ssid);
   WiFi.begin(ssid, pass);
   while (WiFi.status() != WL_CONNECTED) {
     // failed, retry
-    Serial.print(".");
+    Log.info(F("."));
     delay(1000);
   }
+  Log.info(CR "You're connected to the network: %s" CR, WiFi.localIP().toString());
 
-  Serial.print("You're connected to the network: ");
-  Serial.println(WiFi.localIP());
 
   // You can provide a unique client ID, if not set the library uses Arduino-millis()
   // Each client must have a unique client ID
@@ -105,25 +119,25 @@ void setup() {
   // You can provide a username and password for authentication
   mqttClient.setUsernamePassword(mqtt_user, mqtt_pass);
 
-  Serial.print("Attempting to connect to the MQTT broker: ");
-  Serial.println(broker);
+  Log.info("Attempting to connect to the MQTT broker: %s" CR, broker);
 
-  if (!mqttClient.connect(broker, port)) {
-    Serial.print("MQTT connection failed! Error code = ");
-    Serial.println(mqttClient.connectError());
-
-    while (1);
+  while(!mqttClient.connect(broker, port)) {
+    Log.warning("MQTT connection failed! Error code = %s" CR, mqttClient.connectError());
+    delay(1000);
   }
-
-  Serial.println("You're connected to the MQTT broker!");
-  Serial.println();
+  Log.info(F("You're connected to the MQTT broker!" CR));
 
   // setup Temperature and Humidity SHT31-D
   Wire.begin();
-  Wire.setClock(100000);
+  Wire.setClock(50000);
   sht.begin();
 }
 
+
+
+//*********************************************************************
+//    Main Loop()
+//*********************************************************************
 void loop() {
   // call poll() regularly to allow the library to send MQTT keep alives which
   // avoids being disconnected by the broker
@@ -137,52 +151,46 @@ void loop() {
     // save the last time a message was sent
     previousMillis = currentMillis;
 
-    float distance = distSensor.measureDistanceInches();
-    //float distance = 0.0;
+    // Check if measurement is in range
+    float d = distSensor.measureDistanceInches();
+    if(d < 200.0 & d >= 0.0) distance = d;
 
-    Serial.print("Distance: ");
-    Serial.print(distance);
-    Serial.println(" in");
+    Log.info("Distance: %F in" CR, distance);
 
-    //.beginMessage(topic, false, 0, false);
-    // QoS=1, default is 0
-    mqttClient.beginMessage(topicStatus, false, 0, false);
+    // Send Garage Distance to HA-MQTT
+    mqttClient.beginMessage(topicStatus, false, MQTT_QoS, false);
     mqttClient.print(distance);
     mqttClient.endMessage();
 
     // Read Temperature and Humidtiy
     bool sht_success = sht.read(false);
-    sht.requestData(); 
     if(sht_success == false) {
-      Serial.println("FAILED: Unable to Read SHT");
+      Log.fatal("FAILED: Unable to Read SHT, trying again..." CR);
+      bool sht_success = sht.read(false);
     }
     float sht_temp = sht.getFahrenheit();
-    Serial.print(sht_temp);
-    Serial.print(" F\t");
     float sht_humid = sht.getHumidity();
-    Serial.print(sht_humid);
-    Serial.println(" %");
+    Log.info("Temperature: %F F, Humidity: %F %c" CR, sht_temp, sht_humid,'%');
 
     // Sent Temperature and Humidity to HA-MQTT
-    mqttClient.beginMessage(topicTemp, false, 0, false);
+    mqttClient.beginMessage(topicTemp, false, MQTT_QoS, false);
     mqttClient.print(sht_temp);
     mqttClient.endMessage();
 
-    mqttClient.beginMessage(topicHumid, false, 0, false);
+    mqttClient.beginMessage(topicHumid, false, MQTT_QoS, false);
     mqttClient.print(sht_humid);
     mqttClient.endMessage();
 
-    Serial.print("Check MQTT Connection: ");
+    Log.info("Check MQTT Connection..." CR);
     if(!mqttClient.connected()) {
-      Serial.println("Disconnected, trying to connect...");
+      Log.fatal("Disconnected, trying to connect..." CR);
       if (!mqttClient.connect(broker, port)) {
-        Serial.println("FAILED to reconnect to MQTT");
+        Log.fatal("FAILED to reconnect to MQTT" CR);
       } else {
-        Serial.println("Successfully reconnected to MQTT");
+        Log.info("Successfully reconnected to MQTT" CR);
       }
     } else {
-      Serial.println("Connected");
+      Log.info("Connected to MQTT broker: %s" CR, broker);
     }
-    Serial.println(" ");
   }
 }

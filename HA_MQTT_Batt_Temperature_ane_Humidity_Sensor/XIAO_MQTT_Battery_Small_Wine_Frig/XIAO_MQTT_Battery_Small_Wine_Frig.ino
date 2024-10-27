@@ -120,10 +120,11 @@ void update_HA() {
   
   
   // Read Temperature and Humidtiy
-  bool sht_success = sht.read(false);
-  sht.requestData(); 
+  bool sht_success = sht.read(false); // read slow
+  //sht.requestData();  This should be removed...
   if(sht_success == false) {
-    Log.fatal(F("FAILED: Unable to Read SHT" CR));
+    Log.fatal(F("FAILED: Unable to Read SHT, trying again..." CR));
+    bool sht_success = sht.read(false); // read slow
   }
   float sht_temp = sht.getFahrenheit();
   float sht_humid = sht.getHumidity();
@@ -171,6 +172,11 @@ void setup() {
   Serial.begin(115200);
   Log.begin(LOG_LEVEL, &Serial);
 
+  // setup Temperature and Humidity SHT31-D
+  Wire.begin();
+  Wire.setClock(50000);
+  sht.begin();
+
   // Configure ESP32 Sleep Wakeup Timer
   esp_sleep_enable_timer_wakeup(UPDATE_RATE_MIN * uS_TO_MIN_FACTOR);
 
@@ -183,7 +189,7 @@ void setup() {
     Log.info(F("."));
     delay(1000);
   }
-  Log.info(CR "You're connected to the network: %s" CR, WiFi.localIP());
+  Log.info(CR "You're connected to the network: %s" CR, WiFi.localIP().toString());
 
 
   // You can provide a unique client ID, if not set the library uses Arduino-millis()
@@ -195,17 +201,11 @@ void setup() {
   mqttClient.setUsernamePassword(mqtt_user, mqtt_pass);
   Log.info("Attempting to connect to the MQTT broker: %s" CR, broker);
 
-  if (!mqttClient.connect(broker, port)) {
+  while(!mqttClient.connect(broker, port)) {
     Log.warning("MQTT connection failed! Error code = %s" CR, mqttClient.connectError());
-    while (1);
+    delay(1000);
   }
-
   Log.info(F("You're connected to the MQTT broker!" CR));
-
-  // setup Temperature and Humidity SHT31-D
-  Wire.begin();
-  Wire.setClock(100000);
-  sht.begin();
 
   // Update HA
   update_HA();
