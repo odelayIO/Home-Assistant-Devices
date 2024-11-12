@@ -175,9 +175,14 @@ void checkBlynkStatus() {
   mqttClient.endMessage();
 
   // Send Battery Level HA-MQTT
-  int batt = analogRead(A1);
+  uint32_t batt_level = 0;
+  for (int i = 0; i<16; i++) {
+    batt_level = batt_level + analogReadMilliVolts(A1);
+  }
+  float batt_lvl_float = ((batt_level / 16 / 1000.0) / 2.5) * 100.0;
+  Log.info("Battery Sensor Reading : %F" CR, batt_lvl_float);
   mqttClient.beginMessage(topicBatt, MQTT_retain, MQTT_QoS, false);
-  mqttClient.print(batt);
+  mqttClient.print(batt_lvl_float);
   mqttClient.endMessage();
 
   // Check if deepSleep is enabled
