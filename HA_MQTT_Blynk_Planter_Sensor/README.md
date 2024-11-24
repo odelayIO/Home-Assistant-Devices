@@ -1,6 +1,8 @@
 # Wireless Moisture Sensor Mobile App
 
-Now added to Home Assistant.
+TODO: Update page with Home Assistant documentation.
+
+
 
 Created a wireless moisture sensor which updates the moisture level on a IOS/Android Blynk App.  This was achieved using the [Arduino Nano ESP32](https://docs.arduino.cc/tutorials/nano-esp32/cheat-sheet/) development board and [Blynk.io](https://blynk.io/) mobile app.
 
