@@ -78,8 +78,8 @@
 //---------------------------------------------------------
 // Log Level (see note above)
 // Set to VERBOSE during development, then SILENT for operation
-#define LOG_LEVEL LOG_LEVEL_VERBOSE
-//#define LOG_LEVEL LOG_LEVEL_SILENT
+//#define LOG_LEVEL LOG_LEVEL_VERBOSE
+#define LOG_LEVEL LOG_LEVEL_SILENT
 
 // MQTT Broker
 // To connect with SSL/TLS:
@@ -102,7 +102,7 @@ const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = -8*3600; // -8 hours LA time
 const int   daylightOffset_sec = 0;
 
-#define TIME_TO_SLEEP  (30 * 60 * 1000000) // 30 Minutes (60 * 1e-6)
+#define TIME_TO_SLEEP  (10 * 60 * 1000000) // 10 Minutes (60 * 1e-6)
 int disable_deepsleep = 1;
 BlynkTimer timer;
 
@@ -137,7 +137,7 @@ void setupWifi() {
     if ((++retry % 16) == 0) {
       Log.info("WiFi Failed to Connect" CR);
       delay(1000);
-      deepSleep();
+      //deepSleep();
     }
   }
 
@@ -160,27 +160,34 @@ void checkBlynkStatus() {
     sprintf(locTime, "%02d/%02d/%02d %02d:%02d:%02d",\
         timeinfo.tm_mon+1, timeinfo.tm_mday, timeinfo.tm_year+1900,\
         timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-    Log.info(locTime);
+    Log.info("%s" CR, locTime);
     Blynk.virtualWrite(V2, locTime);
   }
 
   // update moisture sensor reading
-  int moisture_sensor = 4095-analogRead(A0);
-  Blynk.virtualWrite(V1, moisture_sensor);
-  Log.info("Moisture Sensor Reading : %s" CR, moisture_sensor);
+  uint32_t moisture_level = 0;
+  for (int i = 0; i<16; i++) {
+    moisture_level = moisture_level + analogReadMilliVolts(A0);
+  }
+  //float moist_lvl_float = moisture_level / 16.0;
+  float moist_lvl_float = ((3200.0 - (moisture_level / 16.0)) / 1600.0) * 100.0;
+  Blynk.virtualWrite(V1, moist_lvl_float);
+  Log.info("Moisture Sensor Reading : %F" CR, moist_lvl_float);
 
   // Send Mositure to HA-MQTT
   mqttClient.beginMessage(topicMoist, MQTT_retain, MQTT_QoS, false);
-  mqttClient.print(moisture_sensor);
+  mqttClient.print(moist_lvl_float);
   mqttClient.endMessage();
 
   // Send Battery Level HA-MQTT
   uint32_t batt_level = 0;
   for (int i = 0; i<16; i++) {
-    batt_level = batt_level + analogReadMilliVolts(A1);
+    batt_level = batt_level + analogReadMilliVolts(A2);
   }
-  float batt_lvl_float = ((batt_level / 16 / 1000.0) / 2.5) * 100.0;
+  float batt_lvl_float = ((batt_level / 16.0 / 2100.0)) * 100.0;
+  //float batt_lvl_float = batt_level / 16.0;
   Log.info("Battery Sensor Reading : %F" CR, batt_lvl_float);
+  Log.info("Battery Sensor Raw Reading : %d" CR, analogReadMilliVolts(A2));
   mqttClient.beginMessage(topicBatt, MQTT_retain, MQTT_QoS, false);
   mqttClient.print(batt_lvl_float);
   mqttClient.endMessage();
@@ -202,7 +209,7 @@ void checkBlynkStatus() {
 BLYNK_WRITE(V0)
 {
   disable_deepsleep = param.asInt();
-  Log.info("Deepsleep Status: %c" CR, !disable_deepsleep);
+  Log.info("Deepsleep Status: %d" CR, !disable_deepsleep);
 }
 
 
@@ -223,6 +230,7 @@ void setup() {
   // Init system
   Serial.begin(115200);
   Log.begin(LOG_LEVEL, &Serial);
+  Log.info("Connected to Serial Port" CR);
 
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP);
     
@@ -248,7 +256,7 @@ void setup() {
 
  
   // Configure Blynk
-  Log.info("Configure Blynk with AUTH... CR");
+  Log.info("Configure Blynk with AUTH... " CR);
   Blynk.config(BLYNK_AUTH_TOKEN);
 
   // Blynk.connect() will wait for 30 seconds to connected
@@ -261,7 +269,7 @@ void setup() {
     if ((++retry % 16) == 0) {
       Log.fatal("FAILED connect to Blynk." CR);
       delay(1000);
-      deepSleep();
+      //deepSleep();
     }
   }
   
