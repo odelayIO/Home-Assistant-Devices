@@ -52,8 +52,8 @@
 
 // Log Level (see note above)
 // Set to VERBOSE during development, then SILENT for operation
-//#define LOG_LEVEL LOG_LEVEL_VERBOSE
-#define LOG_LEVEL LOG_LEVEL_SILENT
+#define LOG_LEVEL LOG_LEVEL_VERBOSE
+//#define LOG_LEVEL LOG_LEVEL_SILENT
 
 #define SHT31_ADDRESS   0x44
 SHT31 sht;
@@ -76,13 +76,14 @@ int        port           = 1883;
 const char topicStatus[]  = "garage/door";
 const char topicTemp[]    = "garage/temperature";
 const char topicHumid[]   = "garage/humidity";
-uint8_t    MQTT_QoS       = 1; // 0:Best Effort, 1:Received ACK, 2:SND/ACK/SND/ACK
+const char topicRSSI[]    = "garage/rssi";
+uint8_t    MQTT_QoS       = 0; // 0:Best Effort, 1:Received ACK, 2:SND/ACK/SND/ACK
+bool       MQTT_RETAIN    = true;
+bool       MQTT_DUP       = false;
 
-const long interval = 2000; // update rate 2sec
-
-//*********************************************************************
-//    System Setup
-//*********************************************************************
+const long interval       = 2000; // update rate 2sec
+const int NUM_RETRIES     = 10; // Number of retries for Wifi MQTT
+int retries               = 0;
 
 // To connect with SSL/TLS:
 // 1) Change WiFiClient to WiFiSSLClient.
@@ -92,6 +93,81 @@ const long interval = 2000; // update rate 2sec
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
 
+
+
+//*********************************************************************
+//    Check WiFi & MQTT status. return 0 if connected, else 1
+//*********************************************************************
+int statusWifiMQTT() {
+ 
+  // Check WiFi
+  if(WiFi.status() != WL_CONNECTED) {
+    Log.warning(F("STATUS: WiFi connection failed" CR));
+    return 1;
+  }
+  Log.info("STATUS: You're connected to the network: %s" CR, WiFi.localIP().toString());
+  Log.info("STATUS: WiFi RSSI: %l dBm" CR, WiFi.RSSI());
+
+  // Check MQTT
+  if(!mqttClient.connected()) {
+    Log.warning(F("STATUS: MQTT connection failed" CR));
+    return 1;
+  }
+
+  Log.info(F("STATUS: You're connected to the MQTT broker!" CR CR));
+  return 0;
+
+}
+
+
+//*********************************************************************
+//    Connect to WiFi and MQTT.  Return 0 if successful, else 1
+//*********************************************************************
+int connectWifiMQTT() {
+
+
+  // attempt to connect to WiFi network:
+  Log.info("Attempting to connect to WPA SSID: %s, " CR,ssid);
+  WiFi.begin(ssid, pass);
+
+  retries = 0;
+  while ((WiFi.status() != WL_CONNECTED) && (retries < NUM_RETRIES)) {
+    // failed, retry
+    Log.info("Retry: %d" CR, retries);
+    delay(1000);
+    ++retries;
+    //WiFi.begin(ssid, pass);
+  }
+
+
+  // You can provide a unique client ID, if not set the library uses Arduino-millis()
+  // Each client must have a unique client ID
+  mqttClient.setId("Garage-Monitor-001");
+
+  // You can provide a username and password for authentication
+  mqttClient.setUsernamePassword(mqtt_user, mqtt_pass);
+  Log.info("Attempting to connect to the MQTT broker: %s" CR, broker);
+
+  // Connect to MQTT Server
+  retries = 0;
+  while( (!mqttClient.connect(broker, port)) && (retries < NUM_RETRIES)) {
+    Log.warning("MQTT connection failed! Error code = %s" CR, mqttClient.connectError());
+    Log.info("Retry: %d" CR, retries);
+    delay(1000);
+    ++retries;
+  }
+
+
+  // Return 0 if everything was successful
+  return statusWifiMQTT();
+
+}
+
+
+
+//*********************************************************************
+//    System Setup
+//*********************************************************************
 float distance = 0.0;
 unsigned long previousMillis = 0;
 
@@ -100,37 +176,16 @@ void setup() {
   Serial.begin(115200);
   Log.begin(LOG_LEVEL, &Serial);
 
-  // attempt to connect to WiFi network:
-  Log.info(CR "Attempting to connect to WPA SSID: %s, " CR,ssid);
-  WiFi.begin(ssid, pass);
-  while (WiFi.status() != WL_CONNECTED) {
-    // failed, retry
-    Log.info(F("."));
-    delay(1000);
+  // Connect to WiFi then MQTT broker
+  while(connectWifiMQTT() != 0) {
+    Log.info("Connecting to server..." CR);
   }
-  Log.info(CR "You're connected to the network: %s" CR, WiFi.localIP().toString());
-
-
-  // You can provide a unique client ID, if not set the library uses Arduino-millis()
-  // Each client must have a unique client ID
-  mqttClient.setId("Garage-Monitor");
-  
-
-  // You can provide a username and password for authentication
-  mqttClient.setUsernamePassword(mqtt_user, mqtt_pass);
-
-  Log.info("Attempting to connect to the MQTT broker: %s" CR, broker);
-
-  while(!mqttClient.connect(broker, port)) {
-    Log.warning("MQTT connection failed! Error code = %s" CR, mqttClient.connectError());
-    delay(1000);
-  }
-  Log.info(F("You're connected to the MQTT broker!" CR));
 
   // setup Temperature and Humidity SHT31-D
   Wire.begin();
   Wire.setClock(50000);
   sht.begin();
+
 }
 
 
@@ -151,6 +206,12 @@ void loop() {
     // save the last time a message was sent
     previousMillis = currentMillis;
 
+    // Check if connected to server, and reconnect
+    while(statusWifiMQTT() == 1) {
+      Log.info(F("Connecting to server..." CR));
+      connectWifiMQTT();
+    }
+
     // Check if measurement is in range
     float d = distSensor.measureDistanceInches();
     if(d < 200.0 & d >= 0.0) distance = d;
@@ -158,7 +219,7 @@ void loop() {
     Log.info("Distance: %F in" CR, distance);
 
     // Send Garage Distance to HA-MQTT
-    mqttClient.beginMessage(topicStatus, false, MQTT_QoS, false);
+    mqttClient.beginMessage(topicStatus, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
     mqttClient.print(distance);
     mqttClient.endMessage();
 
@@ -173,24 +234,16 @@ void loop() {
     Log.info("Temperature: %F F, Humidity: %F %c" CR, sht_temp, sht_humid,'%');
 
     // Sent Temperature and Humidity to HA-MQTT
-    mqttClient.beginMessage(topicTemp, false, MQTT_QoS, false);
+    mqttClient.beginMessage(topicTemp, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
     mqttClient.print(sht_temp);
     mqttClient.endMessage();
 
-    mqttClient.beginMessage(topicHumid, false, MQTT_QoS, false);
+    mqttClient.beginMessage(topicHumid, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
     mqttClient.print(sht_humid);
     mqttClient.endMessage();
 
-    Log.info("Check MQTT Connection..." CR);
-    if(!mqttClient.connected()) {
-      Log.fatal("Disconnected, trying to connect..." CR);
-      if (!mqttClient.connect(broker, port)) {
-        Log.fatal("FAILED to reconnect to MQTT" CR);
-      } else {
-        Log.info("Successfully reconnected to MQTT" CR);
-      }
-    } else {
-      Log.info("Connected to MQTT broker: %s" CR, broker);
-    }
+    mqttClient.beginMessage(topicRSSI, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
+    mqttClient.print(WiFi.RSSI());
+    mqttClient.endMessage();
   }
 }
