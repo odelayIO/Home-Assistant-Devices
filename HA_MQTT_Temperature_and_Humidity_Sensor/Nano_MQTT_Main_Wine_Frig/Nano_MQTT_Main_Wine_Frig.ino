@@ -45,6 +45,7 @@
 //#       Date        Description
 //#     -----------   -----------------------------------------------------------------------
 //#      2024-10-13    Original Creation
+//#      2025-01-04    Updated Wi-Fi re-connect
 //#
 //###########################################################################################
 
@@ -66,6 +67,10 @@
 //#define LOG_LEVEL LOG_LEVEL_VERBOSE
 #define LOG_LEVEL LOG_LEVEL_SILENT
 
+// I2C Address for SHT31 device.  Not need to update
+#define SHT31_ADDRESS   0x44
+SHT31 sht;
+
 // MQTT Broker
 // To connect with SSL/TLS:
 // 1) Change WiFiClient to WiFiSSLClient.
@@ -85,24 +90,89 @@ char pass[] = SECRET_PASS;    // your network password (use for WPA, or use as k
 char mqtt_user[] = SECRET_MQTT_USER;
 char mqtt_pass[] = SECRET_MQTT_PASS;
 
+const long UPDATE_RATE_MS = 2000; // Update Rate
+const int NUM_RETRIES     = 10; // Number of retries for Wifi MQTT
+int retries               = 0;
+
 
 // Update Rate in ms
-const long UPDATE_RATE_MS = 2000;
+// Define WiFi
+WiFiClient wifiClient;
+MqttClient mqttClient(wifiClient);
 
-// I2C Address for SHT31 device.  Not need to update
-#define SHT31_ADDRESS   0x44
-SHT31 sht;
+
+//*********************************************************************
+//    Check WiFi & MQTT status. return 0 if connected, else 1
+//*********************************************************************
+int statusWifiMQTT() {
+ 
+  // Check WiFi
+  if(WiFi.status() != WL_CONNECTED) {
+    Log.warning(F("STATUS: WiFi connection failed" CR));
+    return 1;
+  }
+  Log.info("STATUS: You're connected to the network: %s" CR, WiFi.localIP().toString());
+  Log.info("STATUS: WiFi RSSI: %l dBm" CR, WiFi.RSSI());
+
+  // Check MQTT
+  if(!mqttClient.connected()) {
+    Log.warning(F("STATUS: MQTT connection failed" CR));
+    return 1;
+  }
+
+  Log.info(F("STATUS: You're connected to the MQTT broker!" CR CR));
+  return 0;
+
+}
+
+
+//*********************************************************************
+//    Connect to WiFi and MQTT.  Return 0 if successful, else 1
+//*********************************************************************
+int connectWifiMQTT() {
+
+
+  // attempt to connect to WiFi network:
+  Log.info("Attempting to connect to WPA SSID: %s, " CR,ssid);
+  WiFi.begin(ssid, pass);
+
+  while ((WiFi.status() != WL_CONNECTED) && (retries < NUM_RETRIES)) {
+    // failed, retry
+    Log.info("Retry: %d" CR, retries);
+    delay(1000);
+    ++retries;
+    //WiFi.begin(ssid, pass);
+  }
+
+
+  // You can provide a unique client ID, if not set the library uses Arduino-millis()
+  // Each client must have a unique client ID
+  mqttClient.setId("Main-Wine-Frig");
+
+  // You can provide a username and password for authentication
+  mqttClient.setUsernamePassword(mqtt_user, mqtt_pass);
+  Log.info("Attempting to connect to the MQTT broker: %s" CR, broker);
+
+  // Connect to MQTT Server
+  while( (!mqttClient.connect(broker, port)) && (retries < NUM_RETRIES)) {
+    Log.warning("MQTT connection failed! Error code = %s" CR, mqttClient.connectError());
+    Log.info("Retry: %d" CR, retries);
+    delay(1000);
+    ++retries;
+  }
+
+
+  // Return 0 if everything was successful
+  return statusWifiMQTT();
+
+}
+
 
 
 
 //*********************************************************************
 //    Setup Function
 //*********************************************************************
-
-// Define WiFi
-WiFiClient wifiClient;
-MqttClient mqttClient(wifiClient);
-
 unsigned long previousMillis = 0;
 
 void setup() {
@@ -110,37 +180,15 @@ void setup() {
   Serial.begin(115200);
   Log.begin(LOG_LEVEL, &Serial);
 
+  // Connect to WiFi then MQTT broker
+  while(connectWifiMQTT() != 0) {
+    Log.info("Connecting to server..." CR);
+  }
+
   // setup Temperature and Humidity SHT31-D
   Wire.begin();
   Wire.setClock(100000);
   sht.begin();
-
-  // attempt to connect to WiFi network:
-  Log.info(CR "Attempting to connect to WPA SSID: %s" CR, ssid);
-  WiFi.begin(ssid, pass);
-  while (WiFi.status() != WL_CONNECTED) {
-    // failed, retry
-    Log.info(F("."));
-    delay(1000);
-  }
-
-  Log.info(CR "You're connected to the network: %s" CR, WiFi.localIP().toString());
-
-  // You can provide a unique client ID, if not set the library uses Arduino-millis()
-  // Each client must have a unique client ID
-  mqttClient.setId("Main-Wine-Frig");
-  
-
-  // You can provide a username and password for authentication
-  mqttClient.setUsernamePassword(mqtt_user, mqtt_pass);
-
-  Log.info("Attempting to connect to the MQTT broker: %s" CR, broker);
-
-  while(!mqttClient.connect(broker, port)) {
-    Log.warning("MQTT connection failed! Error code = %s" CR, mqttClient.connectError());
-    delay(1000);
-  }
-  Log.info(F("You're connected to the MQTT broker!" CR));
 
 }
 
@@ -160,9 +208,14 @@ void loop() {
     // save the last time a message was sent
     previousMillis = currentMillis;
 
+    // Check if connected to server, and reconnect
+    while(statusWifiMQTT() == 1) {
+      Log.info(F("Connecting to server..." CR));
+      connectWifiMQTT();
+    }
+
     // Read Temperature and Humidtiy
     bool sht_success = sht.read(false);
-    //sht.requestData(); 
     if(sht_success == false) {
       Log.fatal(F("FAILED: Unable to Read SHT, trying again..." CR));
       bool sht_success = sht.read(false);
@@ -180,19 +233,5 @@ void loop() {
     mqttClient.print(sht_humid);
     mqttClient.endMessage();
 
-    // Not sure if this is required, but checking
-    // if the ESP32 is connected to MQTT broker.
-    // When not connected, then reconnects.
-    Log.info(F("Check MQTT Connection..." CR));
-    if(!mqttClient.connected()) {
-      Log.warning(F("Disconnected, trying to connect..."));
-      if (!mqttClient.connect(broker, port)) {
-        Log.fatal(F("FAILED to reconnect to MQTT" CR));
-      } else {
-        Log.info(F("Successfully reconnected to MQTT" CR));
-      }
-    } else {
-      Log.info(F("Connected." CR));
-    }
   }
 }
