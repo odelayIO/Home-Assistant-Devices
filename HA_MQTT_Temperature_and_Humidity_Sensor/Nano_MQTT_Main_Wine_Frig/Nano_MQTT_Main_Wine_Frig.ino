@@ -46,6 +46,7 @@
 //#     -----------   -----------------------------------------------------------------------
 //#      2024-10-13    Original Creation
 //#      2025-01-04    Updated Wi-Fi re-connect
+//#      2025-03-16    Fixed MQTT error code bug which lead to crash loop.  Added WDT.
 //#
 //###########################################################################################
 
@@ -56,11 +57,14 @@
 #include "Wire.h"
 #include "SHT31.h"
 #include "ArduinoLog.h"
+#include <esp_task_wdt.h>
 
 
 //*********************************************************************
 //    System Parameters
 //*********************************************************************
+//3 seconds WDT
+#define WDT_TIMEOUT 15
 
 // Log Level (see note above)
 // Set to VERBOSE during development, then SILENT for operation
@@ -91,7 +95,7 @@ char mqtt_user[] = SECRET_MQTT_USER;
 char mqtt_pass[] = SECRET_MQTT_PASS;
 
 const long UPDATE_RATE_MS = 2000; // Update Rate
-const int NUM_RETRIES     = 10; // Number of retries for Wifi MQTT
+const int NUM_RETRIES     = 3; // Number of retries for Wifi MQTT
 int retries               = 0;
 
 
@@ -136,6 +140,7 @@ int connectWifiMQTT() {
   Log.info("Attempting to connect to WPA SSID: %s, " CR,ssid);
   WiFi.begin(ssid, pass);
 
+  retries = 0;
   while ((WiFi.status() != WL_CONNECTED) && (retries < NUM_RETRIES)) {
     // failed, retry
     Log.info("Retry: %d" CR, retries);
@@ -154,8 +159,10 @@ int connectWifiMQTT() {
   Log.info("Attempting to connect to the MQTT broker: %s" CR, broker);
 
   // Connect to MQTT Server
+  retries = 0;
   while( (!mqttClient.connect(broker, port)) && (retries < NUM_RETRIES)) {
-    Log.warning("MQTT connection failed! Error code = %s" CR, mqttClient.connectError());
+    //Log.warning("MQTT connection failed! Error code = %s" CR, mqttClient.connectError());
+    Log.warning("MQTT connection failed! " CR);
     Log.info("Retry: %d" CR, retries);
     delay(1000);
     ++retries;
@@ -176,6 +183,10 @@ int connectWifiMQTT() {
 unsigned long previousMillis = 0;
 
 void setup() {
+  // Setup Watchdog Timer
+  esp_task_wdt_init(WDT_TIMEOUT, true); //enable panic so ESP32 restarts
+  esp_task_wdt_add(NULL); //add current thread to WDT watch
+  
   //Initialize serial and wait for port to open:
   Serial.begin(115200);
   Log.begin(LOG_LEVEL, &Serial);
@@ -205,16 +216,23 @@ void loop() {
   unsigned long currentMillis = millis();
   
   if (currentMillis - previousMillis >= UPDATE_RATE_MS) {
+    // Reset Watchdog Timer
+    esp_task_wdt_reset();
+    Log.info(F("WDT has been reset." CR));
+    
     // save the last time a message was sent
     previousMillis = currentMillis;
 
     // Check if connected to server, and reconnect
+    Log.info(F("Checking WiFi MQTT Connection..." CR));
     while(statusWifiMQTT() == 1) {
       Log.info(F("Connecting to server..." CR));
       connectWifiMQTT();
     }
+    Log.info(F("Done Checking WiFi MQTT Connection..." CR));
 
     // Read Temperature and Humidtiy
+    Log.info(F("Reading SHT Sensor..." CR));
     bool sht_success = sht.read(false);
     if(sht_success == false) {
       Log.fatal(F("FAILED: Unable to Read SHT, trying again..." CR));
@@ -225,13 +243,17 @@ void loop() {
     Log.info("Temp: %F, Humidity %F" CR,sht_temp, sht_humid);
 
     // Send Temperature and Humidity to HA-MQTT
+    Log.info(F("Sending Temp..." CR));
     mqttClient.beginMessage(topicTemp, false, MQTT_QoS, false);
     mqttClient.print(sht_temp);
     mqttClient.endMessage();
+    Log.info(F("Sent Temp..." CR));
 
+    Log.info(F("Sending Humid..." CR));
     mqttClient.beginMessage(topicHumid, false, MQTT_QoS, false);
     mqttClient.print(sht_humid);
     mqttClient.endMessage();
+    Log.info(F("Sent Humid..." CR));
 
   }
 }
