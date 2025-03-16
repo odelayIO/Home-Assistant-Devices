@@ -63,7 +63,7 @@
 //*********************************************************************
 //    System Parameters
 //*********************************************************************
-//3 seconds WDT
+//15 seconds WDT
 #define WDT_TIMEOUT 15
 
 // Log Level (see note above)
@@ -161,7 +161,17 @@ int connectWifiMQTT() {
   // Connect to MQTT Server
   retries = 0;
   while( (!mqttClient.connect(broker, port)) && (retries < NUM_RETRIES)) {
-    //Log.warning("MQTT connection failed! Error code = %s" CR, mqttClient.connectError());
+    
+    //    #define MQTT_CONNECTION_REFUSED            -2
+    //    #define MQTT_CONNECTION_TIMEOUT            -1
+    //    #define MQTT_SUCCESS                        0
+    //    #define MQTT_UNACCEPTABLE_PROTOCOL_VERSION  1
+    //    #define MQTT_IDENTIFIER_REJECTED            2
+    //    #define MQTT_SERVER_UNAVAILABLE             3
+    //    #define MQTT_BAD_USER_NAME_OR_PASSWORD      4
+    //    #define MQTT_NOT_AUTHORIZED                 5
+
+    Log.warning("MQTT connection failed! Error code = %d" CR, mqttClient.connectError());
     Log.warning("MQTT connection failed! " CR);
     Log.info("Retry: %d" CR, retries);
     delay(1000);

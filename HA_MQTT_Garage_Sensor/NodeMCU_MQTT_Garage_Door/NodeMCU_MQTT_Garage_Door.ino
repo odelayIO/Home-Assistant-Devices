@@ -44,11 +44,15 @@
 #include "Wire.h"
 #include "SHT31.h"
 #include "ArduinoLog.h"
+#include <esp_task_wdt.h>
 
 
 //*********************************************************************
 //    System Parameters
 //*********************************************************************
+//15 seconds WDT
+#define WDT_TIMEOUT 15
+#define CONFIG_FREERTOS_NUMBER_OF_CORES 1    
 
 // Log Level (see note above)
 // Set to VERBOSE during development, then SILENT for operation
@@ -93,6 +97,11 @@ int retries               = 0;
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
 
+esp_task_wdt_config_t twdt_config = {
+        .timeout_ms = WDT_TIMEOUT,
+        .idle_core_mask = (1 << CONFIG_FREERTOS_NUMBER_OF_CORES) - 1,    // Bitmask of all cores
+        .trigger_panic = true,
+    };
 
 
 //*********************************************************************
@@ -151,7 +160,17 @@ int connectWifiMQTT() {
   // Connect to MQTT Server
   retries = 0;
   while( (!mqttClient.connect(broker, port)) && (retries < NUM_RETRIES)) {
-    Log.warning("MQTT connection failed! Error code = %s" CR, mqttClient.connectError());
+
+    //    #define MQTT_CONNECTION_REFUSED            -2
+    //    #define MQTT_CONNECTION_TIMEOUT            -1
+    //    #define MQTT_SUCCESS                        0
+    //    #define MQTT_UNACCEPTABLE_PROTOCOL_VERSION  1
+    //    #define MQTT_IDENTIFIER_REJECTED            2
+    //    #define MQTT_SERVER_UNAVAILABLE             3
+    //    #define MQTT_BAD_USER_NAME_OR_PASSWORD      4
+    //    #define MQTT_NOT_AUTHORIZED                 5
+
+    Log.warning("MQTT connection failed! Error code = %d" CR, mqttClient.connectError());
     Log.info("Retry: %d" CR, retries);
     delay(1000);
     ++retries;
@@ -172,6 +191,11 @@ float distance = 0.0;
 unsigned long previousMillis = 0;
 
 void setup() {
+  // Setup Watchdog Timer
+  esp_task_wdt_deinit(); //wdt is enabled by default, so we need to deinit it first
+  esp_task_wdt_init(&twdt_config); //enable panic so ESP32 restarts
+
+
   //Initialize serial and wait for port to open:
   Serial.begin(115200);
   Log.begin(LOG_LEVEL, &Serial);
@@ -203,6 +227,10 @@ void loop() {
   unsigned long currentMillis = millis();
   
   if (currentMillis - previousMillis >= interval) {
+    // Reset Watchdog Timer
+    //esp_task_wdt_reset();
+    //Log.info(F("WDT has been reset." CR));
+
     // save the last time a message was sent
     previousMillis = currentMillis;
 
