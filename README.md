@@ -1,7 +1,11 @@
 # Home-Assistant-Devices
 Contains HA configuration files and designs for custom devices
 
+Clone `Home-Assistant-Devices`:
 
+```bash
+git clone --recursive git@github.com:odelayIO/Home-Assistant-Devices.git
+```
 
 **Under Construction**
 
