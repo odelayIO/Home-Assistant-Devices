@@ -44,15 +44,15 @@
 #include "Wire.h"
 #include "SHT31.h"
 #include "ArduinoLog.h"
-#include <esp_task_wdt.h>
+//#include <esp_task_wdt.h>
 
 
 //*********************************************************************
 //    System Parameters
 //*********************************************************************
 //15 seconds WDT
-#define WDT_TIMEOUT 15
-#define CONFIG_FREERTOS_NUMBER_OF_CORES 1    
+//#define WDT_TIMEOUT 15
+//#define CONFIG_FREERTOS_NUMBER_OF_CORES 1    
 
 // Log Level (see note above)
 // Set to VERBOSE during development, then SILENT for operation
@@ -97,11 +97,11 @@ int retries               = 0;
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
 
-esp_task_wdt_config_t twdt_config = {
-        .timeout_ms = WDT_TIMEOUT,
-        .idle_core_mask = (1 << CONFIG_FREERTOS_NUMBER_OF_CORES) - 1,    // Bitmask of all cores
-        .trigger_panic = true,
-    };
+//esp_task_wdt_config_t twdt_config = {
+//        .timeout_ms = WDT_TIMEOUT,
+//        .idle_core_mask = (1 << CONFIG_FREERTOS_NUMBER_OF_CORES) - 1,    // Bitmask of all cores
+//        .trigger_panic = true,
+//    };
 
 
 //*********************************************************************
@@ -192,8 +192,8 @@ unsigned long previousMillis = 0;
 
 void setup() {
   // Setup Watchdog Timer
-  esp_task_wdt_deinit(); //wdt is enabled by default, so we need to deinit it first
-  esp_task_wdt_init(&twdt_config); //enable panic so ESP32 restarts
+  //esp_task_wdt_deinit(); //wdt is enabled by default, so we need to deinit it first
+  //esp_task_wdt_init(&twdt_config); //enable panic so ESP32 restarts
 
 
   //Initialize serial and wait for port to open:
