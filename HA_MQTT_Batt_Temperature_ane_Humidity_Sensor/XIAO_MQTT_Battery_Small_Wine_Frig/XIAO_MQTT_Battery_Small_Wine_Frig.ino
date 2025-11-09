@@ -67,6 +67,9 @@
 #define UPDATE_RATE_MIN     10 // Minutes
 #define uS_TO_MIN_FACTOR    1000000*60
 
+// Ground Pin 8 and reboot board to stop from going to deep sleep
+#define MONITOR_PIN 8  // GPIO8 / D8
+
 
 // Log Level (see note above)
 // Set to VERBOSE during development, then SILENT for operation
@@ -172,6 +175,16 @@ void setup() {
   Serial.begin(115200);
   Log.begin(LOG_LEVEL, &Serial);
 
+  // Configure pin as input with internal pull-up
+  pinMode(MONITOR_PIN, INPUT_PULLUP);
+ 
+  // Loop while the pin is LOW
+  while (digitalRead(MONITOR_PIN) == LOW) {
+    // Optional: print status
+    Serial.println("Stopped HA Sensor boot...");
+    delay(1000);
+  }
+
   // setup Temperature and Humidity SHT31-D
   Wire.begin();
   Wire.setClock(50000);
@@ -184,12 +197,21 @@ void setup() {
   // attempt to connect to WiFi network:
   Log.info(CR "Attempting to connect to WPA SSID: %s" CR, ssid);
   WiFi.begin(ssid, pass);
-  while (WiFi.status() != WL_CONNECTED) {
+  int i=0;
+  while(WiFi.status() != WL_CONNECTED) {
     // failed, retry
     Log.info(F("."));
     delay(1000);
+    if(i>20) {
+      Log.warning("Not connected to WiFi!");
+      break;
+    } else {
+      ++i;
+    }
   }
-  Log.info(CR "You're connected to the network: %s" CR, WiFi.localIP().toString());
+  if(WiFi.status() == WL_CONNECTED) {
+    Log.info(CR "You're connected to the network: %s" CR, WiFi.localIP().toString().c_str());
+  } 
 
 
   // You can provide a unique client ID, if not set the library uses Arduino-millis()
@@ -201,11 +223,11 @@ void setup() {
   mqttClient.setUsernamePassword(mqtt_user, mqtt_pass);
   Log.info("Attempting to connect to the MQTT broker: %s" CR, broker);
 
-  while(!mqttClient.connect(broker, port)) {
-    Log.warning("MQTT connection failed! Error code = %s" CR, mqttClient.connectError());
-    delay(1000);
+  if(!mqttClient.connect(broker, port)) {
+    Log.warning("MQTT connection failed! Error code = %d" CR, mqttClient.connectError());
+  } else {
+    Log.info(F("You're connected to the MQTT broker!" CR));
   }
-  Log.info(F("You're connected to the MQTT broker!" CR));
 
   // Update HA
   update_HA();
