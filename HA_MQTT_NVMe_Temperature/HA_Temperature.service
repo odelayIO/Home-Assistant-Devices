@@ -1,0 +1,8 @@
+[Unit]
+Description=NVMe Temperature HA MQTT Monitor
+
+[Service]
+Type=oneshot
+Environment=PYTHONPATH=/home/sdr/.local/lib/python3.10/site-packages
+WorkingDirectory=/home/sdr/workspace/puch-workspace/puch-rack
+ExecStart=/usr/bin/python3 /home/sdr/workspace/puch-workspace/puch-rack/HA_Computer_Temp_MQTT.py

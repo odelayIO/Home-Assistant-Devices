@@ -1,0 +1,11 @@
+[Unit]
+Description=Run HA_Computer_Temp_MQTT.py every 10 seconds
+
+[Timer]
+OnBootSec=10s
+OnUnitActiveSec=10s
+AccuracySec=1s
+Unit=HA_Temperature.service
+
+[Install]
+WantedBy=timers.target
