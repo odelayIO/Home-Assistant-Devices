@@ -1,4 +1,4 @@
-1. # HA Computer Temperature Monitor
+# HA Computer Temperature Monitor
 
 Just a Python script that will send the computer temperature for the NVMe to Home Assistant (HA).  This could be updated to monitor any temperature on the computer system.
 
