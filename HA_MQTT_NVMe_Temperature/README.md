@@ -22,10 +22,17 @@ sudo systemctl enable HA_Computer.timer
 sudo systemctl start HA_Computer.timer
 ```
 
+Check the service is running:
+
+```bash
+sudo systemctl status HA_Temperature.service
+sudo systemctl status HA_Temperature.timer
+```
+
 To check the log file:
 
 ```bash
-sudo journalctl -u HA_Computer.service
+sudo journalctl -u HA_Temperature.service
 ```
 
 
