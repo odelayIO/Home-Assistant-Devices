@@ -104,13 +104,3 @@ Or by age:
 sudo journalctl --vacuum-time=3d
 ```
 
-------
-
-### Recommended Settings for a Home System
-
-```
-SystemMaxUse=200M
-SystemMaxFileSize=20M
-MaxRetentionSec=5day
-```
-
