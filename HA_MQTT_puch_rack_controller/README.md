@@ -24,7 +24,9 @@ Using the ArduinoMQTTClient library for the MQTT message: https://github.com/ard
 
 
 
-## HA MQTT Configuration
+## Home Assistant Integration
+
+### HA MQTT Configuration
 
 The Home Assistant configuration is controlled by YAML file to define the custom devices.  Copy and paste the following YAML source code into the Home Assistant configuration files.
 
@@ -77,7 +79,7 @@ switch:
 
 
 
-## Home Assistant Lovelace UI
+### Home Assistant Lovelace UI
 
 Below is the Lovelace UI YAML source code.
 
