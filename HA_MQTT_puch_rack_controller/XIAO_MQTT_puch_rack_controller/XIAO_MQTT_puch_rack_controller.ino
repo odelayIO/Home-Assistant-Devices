@@ -225,7 +225,7 @@ void setup() {
     if (commands[i].isAnalog) {
       analogWriteResolution(commands[i].espPin, PWM_RES);
       analogWriteFrequency(commands[i].espPin, PWM_FREQ);
-      analogWrite(commands[i].espPin, FAN_HIGH); // Start with fan off
+      analogWrite(commands[i].espPin, FAN_HIGH); // Start with fan on high
     } else {
       digitalWrite(commands[i].espPin, LOW); // Start relay logic off
     }
