@@ -12,6 +12,12 @@ This is the webpage/phone puch power controller for the puch rack.  This is impl
 
 
 
+The HA-NVMe monitor is integrated in the HA-UI, see the Python device: https://github.com/odelayIO/Home-Assistant-Devices/tree/main/HA_MQTT_NVMe_Temperature
+
+
+
+
+
 ## Building Arduino Firmware
 
 Using the ArduinoMQTTClient library for the MQTT message: https://github.com/arduino-libraries/ArduinoMqttClient
