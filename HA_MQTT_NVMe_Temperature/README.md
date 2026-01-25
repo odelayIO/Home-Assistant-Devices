@@ -39,6 +39,63 @@ sudo journalctl -u HA_Temperature.service
 
 
 
+## Home Assistant Integration
+
+![HA-webpage-controller](./doc/HA-webpage-controller.png)
+
+### HA MQTT Configuration
+
+```yaml
+sensor:
+- name: "puch dev-wks NVMe Temperature-Composite"
+    state_topic: "puch_rack/nvme/composite"
+    qos: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    suggested_display_precision: 2
+    unique_id: "puch_rack_nvme_temp_001"
+  - name: "puch dev-wks NVMe Temperature-1"
+    state_topic: "puch_rack/nvme/sensor_1"
+    qos: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    suggested_display_precision: 2
+    unique_id: "puch_rack_nvme_temp_002"
+  - name: "puch dev-wks NVMe Temperature-2"
+    state_topic: "puch_rack/nvme/sensor_2"
+    qos: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    suggested_display_precision: 2
+    unique_id: "puch_rack_nvme_temp_003"
+
+```
+
+### Home Assistant Lovelace UI
+
+Below is the Lovelace UI YAML source code.
+
+```yaml
+type: entities
+entities:
+  - entity: switch.pynq_kria_plug
+    name: Main Power
+  - entity: sensor.pynq_kria_plug_power
+    name: Main Power Load
+  - entity: sensor.puch_dev_wks_nvme_temperature
+    name: NVMe Composite
+  - entity: sensor.puch_dev_wks_nvme_temperature_1
+    name: NVMe Die
+  - entity: select.rack_fan_mode_2
+    name: NVMe Fan Speed
+  - entity: switch.kria_board
+  - entity: switch.pynq_z1_board
+  - entity: switch.pluto_sdr_1
+  - entity: switch.pluto_sdr_2
+title: puch Rack
+
+```
+
 
 
 ## Journal Recommend Settings
