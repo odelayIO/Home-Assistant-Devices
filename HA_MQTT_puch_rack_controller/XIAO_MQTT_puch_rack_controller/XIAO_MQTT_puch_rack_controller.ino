@@ -55,45 +55,6 @@
 
 
 //########################################################################
-//#   Fan Constants for PWM
-//########################################################################
-uint8_t FAN_OFF   = 0;
-uint8_t FAN_LOW   = 63;
-uint8_t FAN_MED   = 127;
-uint8_t FAN_HIGH  = 255;
-
-#define PWM_FREQ 25000   // 25 kHz (PC fan spec)
-#define PWM_RES  8       // 8-bit (0–255)
-uint8_t FAN_PWM_PIN = D0; 
-
-
-
-//########################################################################
-//#   Command Structure
-//########################################################################
-struct {
-  const char* command;
-  uint8_t relayPin;
-  bool state;
-  const char* feedback;
-} commands[] = {
-  {"KRIA-ON",     D10, 1, "KRIA-ON"},
-  {"KRIA-OFF",    D10, 0, "KRIA-OFF"},
-  {"PYNQZ1-ON",   D9, 1, "PYNQZ1-ON"},
-  {"PYNQZ1-OFF",  D9, 0, "PYNQZ1-OFF"},
-  {"PLUTO-1-ON",  D8, 1, "PLUTO-1-ON"},
-  {"PLUTO-1-OFF", D8, 0, "PLUTO-1-OFF"},
-  {"PLUTO-2-ON",  D7, 1, "PLUTO-2-ON"},
-  {"PLUTO-2-OFF", D7, 0, "PLUTO-2-OFF"},
-  {"FAN-OFF", FAN_PWM_PIN, 0, "FAN-OFF"},
-  {"FAN-LOW", FAN_PWM_PIN, 0, "FAN-LOW"},
-  {"FAN-MED", FAN_PWM_PIN, 0, "FAN-MED"},
-  {"FAN-HIGH", FAN_PWM_PIN, 0, "FAN-HIGH"},
-};
-const size_t commandCount = sizeof(commands) / sizeof(commands[0]);
-
-
-//########################################################################
 //#   Log Level (see note above)
 //#   Set to VERBOSE during development, then SILENT for operation
 //########################################################################
@@ -101,6 +62,54 @@ const size_t commandCount = sizeof(commands) / sizeof(commands[0]);
 #define LOG_LEVEL LOG_LEVEL_VERBOSE
 //#define LOG_LEVEL LOG_LEVEL_SILENT
 
+
+
+//########################################################################
+//#   Fan Constants for PWM (need to invert due to NPN Transistor)
+//########################################################################
+uint8_t FAN_OFF   = 255-0;
+uint8_t FAN_LOW   = 255-102;  // 40%
+uint8_t FAN_MED   = 255-129;  // 70%
+uint8_t FAN_HIGH  = 255-255;
+
+#define PWM_FREQ 25000   // 25 kHz (PC fan spec)
+#define PWM_RES  8       // 8-bit (0–255)
+
+//########################################################################
+//#   ESP32 Pin Mapping
+//########################################################################
+uint8_t FAN_PWM_PIN = D0; 
+uint8_t PLUTO1_PIN  = D10;
+uint8_t PLUTO2_PIN  = D9;
+uint8_t KRIA_PIN    = D8;
+uint8_t PYNQZ1_PIN  = D7;
+
+
+//########################################################################
+//#   Command Structure
+//########################################################################
+struct {
+  const char* command;
+  uint8_t espPin;
+  bool state;
+  bool isAnalog;
+  uint8_t analogValue;
+  const char* feedback;
+} commands[] = {
+  {"KRIA-ON",     KRIA_PIN,    1, false, 0,        "KRIA-ON"},
+  {"KRIA-OFF",    KRIA_PIN,    0, false, 0,        "KRIA-OFF"},
+  {"PYNQZ1-ON",   PYNQZ1_PIN,  1, false, 0,        "PYNQZ1-ON"},
+  {"PYNQZ1-OFF",  PYNQZ1_PIN,  0, false, 0,        "PYNQZ1-OFF"},
+  {"PLUTO-1-ON",  PLUTO1_PIN,  1, false, 0,        "PLUTO-1-ON"},
+  {"PLUTO-1-OFF", PLUTO1_PIN,  0, false, 0,        "PLUTO-1-OFF"},
+  {"PLUTO-2-ON",  PLUTO2_PIN,  1, false, 0,        "PLUTO-2-ON"},
+  {"PLUTO-2-OFF", PLUTO2_PIN,  0, false, 0,        "PLUTO-2-OFF"},
+  {"FAN-OFF",     FAN_PWM_PIN, 0, true,  FAN_OFF,  "FAN-OFF"},
+  {"FAN-LOW",     FAN_PWM_PIN, 0, true,  FAN_LOW,  "FAN-LOW"},
+  {"FAN-MED",     FAN_PWM_PIN, 0, true,  FAN_MED,  "FAN-MED"},
+  {"FAN-HIGH",    FAN_PWM_PIN, 0, true,  FAN_HIGH, "FAN-HIGH"},
+};
+const size_t commandCount = sizeof(commands) / sizeof(commands[0]);
 
 
 //########################################################################
@@ -131,20 +140,15 @@ const char  topicStatus[]   = "puch_rack/status";
 const char  topicCtrl[]     = "puch_rack/control";
 
 // MQTT Settings
-const int   MQTT_QoS        = 1;  // 0,1,2
-const bool   MQTT_RETAIN    = false; 
-const bool   MQTT_DUP       = false; 
-const long UPDATE_RATE_MS   = 2000; // Update Rate
+const int  MQTT_QoS         = 1;  // 0,1,2
+const bool MQTT_RETAIN      = false; 
+const bool MQTT_DUP         = false; 
 
 // Connection management
-const long  WIFI_RECONNECT_INTERVAL_MS = 30000;  // Try WiFi reconnection every 30 seconds
-const long  MQTT_RECONNECT_INTERVAL_MS = 10000;  // Try MQTT reconnection every 10 seconds
-const long  CONNECTION_CHECK_INTERVAL_MS = 5000; // Check connection status every 5 seconds
-const int   WIFI_TIMEOUT_SEC = 20;  
-const int   MQTT_TIMEOUT_SEC = 20;  
-unsigned long lastWifiReconnectAttempt = 0;
-unsigned long lastMqttReconnectAttempt = 0;
-unsigned long lastConnectionCheck = 0;
+const int   WIFI_TIMEOUT_SEC = 30;  // Try connecting for 30 seconds
+const int   MQTT_TIMEOUT_SEC = 10;  // Try connecting for 10 seconds
+
+
 
 
 
@@ -157,7 +161,7 @@ void connectWiFi() {
   
   int timeout = 0;
   while ((WiFi.status() != WL_CONNECTED) && (timeout < WIFI_TIMEOUT_SEC)) {
-    Log.info(".");
+    Log.info("WiFi Connection Duration: %d sec" CR, timeout);
     delay(1000);
     timeout++;
   }
@@ -188,7 +192,7 @@ void connectMQTT() {
     //    #define MQTT_NOT_AUTHORIZED                 5
 
     Log.warning("MQTT connection failed! Error code = %d" CR, mqttClient.connectError());
-    Log.info("Second: %d" CR, timeout);
+    Log.info("MQTT Connection Duration: %d sec" CR, timeout);
     delay(1000);
     timeout++;
   }
@@ -196,9 +200,10 @@ void connectMQTT() {
   if (mqttClient.connected()) {
     Log.info("MQTT connected to broker!" CR);
     // set the message receive callback
+    Log.info("Subscribing to status/feedback topic: %s" CR, topicStatus);
     mqttClient.onMessage(onMqttMessage);
     // subscribe to a topic
-    Log.info("Subscribing to topic: %s" CR, topicCtrl);
+    Log.info("Subscribing to command/control topic: %s" CR, topicCtrl);
     mqttClient.subscribe(topicCtrl, MQTT_QoS);
   } else {
     Log.error("MQTT connection failed!" CR);
@@ -216,20 +221,21 @@ void setup() {
 
   // Initialize pin modes
   for (size_t i = 0; i < commandCount; i++) {
-    pinMode(commands[i].relayPin, OUTPUT);
-    digitalWrite(commands[i].relayPin, LOW); // or HIGH depending on your relay logic
+    pinMode(commands[i].espPin, OUTPUT);
+    if (commands[i].isAnalog) {
+      analogWriteResolution(commands[i].espPin, PWM_RES);
+      analogWriteFrequency(commands[i].espPin, PWM_FREQ);
+      analogWrite(commands[i].espPin, FAN_HIGH); // Start with fan off
+    } else {
+      digitalWrite(commands[i].espPin, LOW); // Start relay logic off
+    }
   }
-
-  // Fan PWM Configuration
-  pinMode(FAN_PWM_PIN, OUTPUT);
-  analogWriteResolution(FAN_PWM_PIN, PWM_RES);
-  analogWriteFrequency(FAN_PWM_PIN, PWM_FREQ);
 
   // You can provide a unique client ID, if not set the library uses Arduino-millis()
   // Each client must have a unique client ID
   mqttClient.setId("puch-Rack-Controller");
 
-  // You can provide a username and password for authentication
+  // MQTT authentication
   mqttClient.setUsernamePassword(mqtt_user, mqtt_pass);
 
   // Connect to WiFi and MQTT
@@ -240,45 +246,23 @@ void setup() {
 
 
 //########################################################################
-//#   Handle WiFi Reconnection
+//#   Handle WiFi/MQTT Reconnection
 //########################################################################
-void handleWiFiReconnection() {
-  unsigned long currentMillis = millis();
+void handleReconnection() {
   
   if (WiFi.status() != WL_CONNECTED) {
-    if (currentMillis - lastWifiReconnectAttempt >= WIFI_RECONNECT_INTERVAL_MS) {
-      Log.warning("WiFi disconnected. Attempting to reconnect..." CR);
-      lastWifiReconnectAttempt = currentMillis;
-      connectWiFi();
-      
-      // Reset MQTT reconnection timer to attempt connection immediately if WiFi reconnected
-      if (WiFi.status() == WL_CONNECTED) {
-        lastMqttReconnectAttempt = 0;
-      }
-    }
-  }
-}
-
-
-//########################################################################
-//#   Handle MQTT Reconnection
-//########################################################################
-void handleMqttReconnection() {
-  unsigned long currentMillis = millis();
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    if (!mqttClient.connected()) {
-      if (currentMillis - lastMqttReconnectAttempt >= MQTT_RECONNECT_INTERVAL_MS) {
+    Log.warning("WiFi disconnected. Attempting to reconnect..." CR);
+    connectWiFi();
+    if (WiFi.status() == WL_CONNECTED) {
+      if (!mqttClient.connected()) {
         Log.warning("MQTT disconnected. Attempting to reconnect..." CR);
-        lastMqttReconnectAttempt = currentMillis;
         connectMQTT();
       }
-    } else {
-      // Connected to both WiFi and MQTT - call poll() to maintain connection
-      mqttClient.poll();
     }
   }
 }
+
+
 
 
 //########################################################################
@@ -289,12 +273,8 @@ void loop() {
   // avoids being disconnected by the broker
   mqttClient.poll();
 
-  // Check and handle WiFi connection
-  handleWiFiReconnection();
-  
-  // Check and handle MQTT connection
-  handleMqttReconnection();
-
+  // Check and handle WiFi/MQTT connection
+  handleReconnection();
 }
 
 
@@ -312,23 +292,17 @@ void onMqttMessage(int messageSize) {
     content.concat((char)mqttClient.read());
   }
 
+  // Parse through message, and execute message
   bool found = false;
   for (size_t i = 0; i < commandCount; i++) {
     if (content == commands[i].command) {
       Log.info("Executing: %s" CR,commands[i].feedback);
 
       // Drive pins or set fan speed
-      if(content == "FAN-OFF") {
-        analogWrite(FAN_PWM_PIN,255-FAN_OFF);
-      } else if(content == "FAN-LOW") {
-        analogWrite(FAN_PWM_PIN,255-FAN_LOW);
-      } else if(content == "FAN-MED") {
-        analogWrite(FAN_PWM_PIN,255-FAN_MED);
-      } else if(content == "FAN-HIGH") {
-        analogWrite(FAN_PWM_PIN,255-FAN_HIGH);
+      if (commands[i].isAnalog) {
+        analogWrite(commands[i].espPin, commands[i].analogValue);
       } else {
-        // Write the Pin connected to Relay Switch
-        digitalWrite(commands[i].relayPin, commands[i].state); 
+        digitalWrite(commands[i].espPin, commands[i].state);
       }
      
       // Send Feedback message over MQTT
@@ -342,6 +316,6 @@ void onMqttMessage(int messageSize) {
   }
   
   if (!found) {
-    Log.warning("Unknown command: %s" CR, content);
+    Log.error("Unknown command: %s" CR, content);
   }
 }
