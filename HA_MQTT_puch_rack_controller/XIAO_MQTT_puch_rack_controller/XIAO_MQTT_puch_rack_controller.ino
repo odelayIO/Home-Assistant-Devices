@@ -69,8 +69,11 @@
 //########################################################################
 uint8_t FAN_OFF   = 255-0;
 uint8_t FAN_LOW   = 255-102;  // 40%
-uint8_t FAN_MED   = 255-129;  // 70%
+uint8_t FAN_MED   = 255-179;  // 70%
 uint8_t FAN_HIGH  = 255-255;
+
+uint8_t FAN_INIT  = FAN_HIGH; // on boot
+uint8_t PIN_INIT  = LOW; // on boot
 
 #define PWM_FREQ 25000   // 25 kHz (PC fan spec)
 #define PWM_RES  8       // 8-bit (0–255)
@@ -80,9 +83,28 @@ uint8_t FAN_HIGH  = 255-255;
 //########################################################################
 uint8_t FAN_PWM_PIN = D0; 
 uint8_t PLUTO1_PIN  = D10;
-uint8_t PLUTO2_PIN  = D9;
+uint8_t PLUTO2_PIN  = D2;
 uint8_t KRIA_PIN    = D8;
 uint8_t PYNQZ1_PIN  = D7;
+
+
+//########################################################################
+//#   Initial Commands Structure - Status to send on boot
+//########################################################################
+struct {
+  uint8_t espPin;
+  bool state;
+  bool isAnalog;
+  uint8_t analogValue;
+  const char* feedback;
+} initCommands[] = {
+  {KRIA_PIN,    0, false, 0,        "KRIA-OFF"},    
+  {PYNQZ1_PIN,  0, false, 0,        "PYNQZ1-OFF"},  
+  {PLUTO1_PIN,  0, false, 0,        "PLUTO-1-OFF"}, 
+  {PLUTO2_PIN,  0, false, 0,        "PLUTO-2-OFF"},    
+  {FAN_PWM_PIN, 0, true,  FAN_HIGH, "FAN-HIGH"},    
+};
+const size_t initCommandCount = sizeof(initCommands) / sizeof(initCommands[0]);
 
 
 //########################################################################
@@ -218,16 +240,18 @@ void setup() {
   //Initialize serial and wait for port to open:
   Serial.begin(115200);
   Log.begin(LOG_LEVEL, &Serial);
+  Log.info("Setup Started..." CR);
 
-  // Initialize pin modes
-  for (size_t i = 0; i < commandCount; i++) {
-    pinMode(commands[i].espPin, OUTPUT);
-    if (commands[i].isAnalog) {
-      analogWriteResolution(commands[i].espPin, PWM_RES);
-      analogWriteFrequency(commands[i].espPin, PWM_FREQ);
-      analogWrite(commands[i].espPin, FAN_HIGH); // Start with fan on high
+  
+  // Initialize pin modes and send initial MQTT status
+  for (size_t i = 0; i < initCommandCount; i++) {
+    pinMode(initCommands[i].espPin, OUTPUT);
+    if (initCommands[i].isAnalog) {
+      analogWriteResolution(initCommands[i].espPin, PWM_RES);
+      analogWriteFrequency(initCommands[i].espPin, PWM_FREQ);
+      analogWrite(initCommands[i].espPin, initCommands[i].analogValue);
     } else {
-      digitalWrite(commands[i].espPin, LOW); // Start relay logic off
+      digitalWrite(initCommands[i].espPin, initCommands[i].state);
     }
   }
 
@@ -241,6 +265,17 @@ void setup() {
   // Connect to WiFi and MQTT
   connectWiFi();
   connectMQTT();
+
+  // Send initial status to MQTT server
+  if (mqttClient.connected()) {
+    Log.info("Publishing initial status..." CR);
+    for (size_t i = 0; i < initCommandCount; i++) {
+      mqttClient.beginMessage(topicStatus, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
+      mqttClient.print(initCommands[i].feedback);
+      mqttClient.endMessage();
+      Log.info("Published: %s" CR, initCommands[i].feedback);
+    }
+  }
 }
 
 
