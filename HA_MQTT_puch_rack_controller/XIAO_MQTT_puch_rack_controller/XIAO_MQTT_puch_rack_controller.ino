@@ -171,6 +171,10 @@ const int   WIFI_TIMEOUT_SEC = 30;  // Try connecting for 30 seconds
 const int   MQTT_TIMEOUT_SEC = 10;  // Try connecting for 10 seconds
 
 
+// RSSI publish timing
+unsigned long lastRssiPublish = 0;
+const unsigned long RSSI_PUBLISH_INTERVAL_MS = 10000; // publish every 60s
+
 
 
 
@@ -227,6 +231,8 @@ void connectMQTT() {
     // subscribe to a topic
     Log.info("Subscribing to command/control topic: %s" CR, topicCtrl);
     mqttClient.subscribe(topicCtrl, MQTT_QoS);
+    // Publish current WiFi RSSI on connect
+    publishWiFiRSSI();
   } else {
     Log.error("MQTT connection failed!" CR);
   }
@@ -275,6 +281,8 @@ void setup() {
       mqttClient.endMessage();
       Log.info("Published: %s" CR, initCommands[i].feedback);
     }
+    // Publish WiFi RSSI as a status entry
+    publishWiFiRSSI();
   }
 }
 
@@ -297,6 +305,22 @@ void handleReconnection() {
   }
 }
 
+// Publish WiFi RSSI (dBm) to topicStatus as "WiFiRSSI:<value>"
+void publishWiFiRSSI() {
+  if (!mqttClient.connected()) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  long rssi = WiFi.RSSI();
+  char buf[32];
+  snprintf(buf, sizeof(buf), "WiFiRSSI:%ld", rssi);
+
+  mqttClient.beginMessage(topicStatus, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
+  mqttClient.print(buf);
+  mqttClient.endMessage();
+
+  Log.info("Published: %s" CR, buf);
+}
+
 
 
 
@@ -310,6 +334,12 @@ void loop() {
 
   // Check and handle WiFi/MQTT connection
   handleReconnection();
+
+  // Periodically publish RSSI
+  if ((millis() - lastRssiPublish) >= RSSI_PUBLISH_INTERVAL_MS) {
+    publishWiFiRSSI();
+    lastRssiPublish = millis();
+  }
 }
 
 
