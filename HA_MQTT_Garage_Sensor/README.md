@@ -87,7 +87,7 @@ This is for USB connection.
 
 The Garage sensor firmware can be updated OTA, just select `OTA-HA-Garage-Door`
 
-![image-20260621105336915](/home/sdr/.config/Typora/typora-user-images/image-20260621105336915.png)
+![image-20260621105336915](./doc/image-20260621105336915.png)
 
 # HA Configuration
 
