@@ -33,12 +33,14 @@
 //#       Date        Description
 //#     -----------   -----------------------------------------------------------------------
 //#      2024-10-05    Original Creation
+//#      2026-06-21    Fixed sensor read bug and added OTA Updates
 //#
 //###########################################################################################
 
 #include <ArduinoMqttClient.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <ArduinoOTA.h>
 #include "arduino_secrets.h"
 #include "UltrasonicHCSR04.h"
 #include "Wire.h"
@@ -66,6 +68,14 @@ SHT31 sht;
 const int trigPin = 12; // GPIO-12
 const int echoPin = 13; // GPIO-13
 UltrasonicHCSR04 distSensor(trigPin, echoPin);
+
+// HC-SR04 Parameters for median filter and outlier rejection
+const int   NUM_SAMPLES       = 5;
+const float MIN_VALID_INCHES  = 1.0;
+const float MAX_VALID_INCHES  = 200.0;
+
+// OTA Hostname
+const char* OTA_HOSTNAME = "OTA-HA-Garage-Door";
 
 // arduino_secrets.h
 char ssid[] = SECRET_SSID;    // your network SSID (name)
@@ -185,6 +195,47 @@ int connectWifiMQTT() {
 
 
 //*********************************************************************
+//    Take several HC-SR04 samples and return the median.
+//    Rejects out-of-range readings (>= MAX_VALID_INCHES) and
+//    sensor timeouts (pulseIn returns 0 -> measureDistanceInches()
+//    returns 0.0, which would otherwise look like a valid 0in reading).
+//    A short delay between pulses avoids one echo's reverberation
+//    triggering a false reading on the next pulse.
+//    Returns -1.0 if no valid sample was obtained.
+//*********************************************************************
+
+float measureDistanceMedianInches() {
+  float samples[NUM_SAMPLES];
+  int   validCount = 0;
+
+  for (int i = 0; i < NUM_SAMPLES; i++) {
+    float d = distSensor.measureDistanceInches();
+    if (d >= MIN_VALID_INCHES && d < MAX_VALID_INCHES) {
+      samples[validCount++] = d;
+    }
+    delay(60); // let echoes settle before the next trigger pulse
+  }
+
+  if (validCount == 0) {
+    return -1.0;
+  }
+
+  // simple insertion sort, then take the median
+  for (int i = 1; i < validCount; i++) {
+    float key = samples[i];
+    int j = i - 1;
+    while (j >= 0 && samples[j] > key) {
+      samples[j + 1] = samples[j];
+      j--;
+    }
+    samples[j + 1] = key;
+  }
+
+  return samples[validCount / 2];
+}
+
+
+//*********************************************************************
 //    System Setup
 //*********************************************************************
 float distance = 0.0;
@@ -210,6 +261,10 @@ void setup() {
   Wire.setClock(50000);
   sht.begin();
 
+  ArduinoOTA.setHostname(OTA_HOSTNAME);
+  ArduinoOTA.begin();
+  Log.info("OTA ready as %s" CR, OTA_HOSTNAME);
+
 }
 
 
@@ -218,6 +273,11 @@ void setup() {
 //    Main Loop()
 //*********************************************************************
 void loop() {
+
+  // Handle OTA Updates
+  ArduinoOTA.handle();
+
+
   // call poll() regularly to allow the library to send MQTT keep alives which
   // avoids being disconnected by the broker
   mqttClient.poll();
@@ -240,9 +300,9 @@ void loop() {
       connectWifiMQTT();
     }
 
-    // Check if measurement is in range
-    float d = distSensor.measureDistanceInches();
-    if(d < 200.0 & d >= 0.0) distance = d;
+    // Take a median-filtered reading; keep the last good value on failure
+    float d = measureDistanceMedianInches();
+    if(d >= MIN_VALID_INCHES && d < MAX_VALID_INCHES) distance = d;
 
     Log.info("Distance: %F in" CR, distance);
 

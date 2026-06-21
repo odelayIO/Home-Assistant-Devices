@@ -77,17 +77,77 @@ void loop() {
 
 #### Arduino IDE Board Selection
 
+This is for USB connection.
+
 ![image-20241012115917039](./doc/image-20241012115917039.png)
 
 
 
-# HA Template
+#### OTA Updates
 
-```jinja2
-{% if states("sensor.garage_door_status")|float <= 80 %}
-  Garage Open
-{% else %}
-  Garage Closed
-{% endif %}
+The Garage sensor firmware can be updated OTA, just select `OTA-HA-Garage-Door`
+
+![image-20260621105336915](/home/sdr/.config/Typora/typora-user-images/image-20260621105336915.png)
+
+# HA Configuration
+
+## Template
+
+Paste the below into `sensors.yaml` to configure the Garage sensor.
+
+```yaml
+- platform: template
+  sensors:
+    garage_status:
+      friendly_name: Garage Door Status
+      unique_id: "029309823409"
+      value_template: >-
+        {% if states('sensor.garage_door_status')|float <= 25 %}
+          Garage Open
+        {% else %}
+          Garage Closed
+        {% endif %}
+      icon_template: >-
+        {% if states('sensor.garage_door_status')|float <= 25 %}
+          mdi:garage-open
+        {% else %}
+          mdi:garage
+        {% endif %}
+
+```
+
+
+
+
+
+## Automations
+
+### Garage Notify Open for Longer than 5 minutes
+
+```yaml
+alias: Garage Door
+description: ""
+triggers:
+  - entity_id:
+      - sensor.garage_door_status
+    for:
+      hours: 0
+      minutes: 5
+      seconds: 0
+    above: 0
+    below: 20
+    trigger: numeric_state
+conditions: []
+actions:
+  - action: notify.mobile_app_everetts_iphone_12
+    data:
+      message: Garage Door Open
+  - action: notify.mobile_app_bri_s
+    data:
+      message: Garage Door Open
+  - repeat:
+      sequence: []
+      count: 5
+mode: single
 ```
 
