@@ -93,7 +93,7 @@ The Garage sensor firmware can be updated OTA, just select `OTA-HA-Garage-Door`
 
 ## Template
 
-Paste the below into `sensors.yaml` to configure the Garage sensor.
+Paste the below into `sensors.yaml` in the Home Assistant configuration folder to define the Garage sensor.
 
 ```yaml
 - platform: template
