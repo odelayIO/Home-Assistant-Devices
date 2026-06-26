@@ -89,6 +89,33 @@ uint8_t PYNQZ1_PIN  = D7;
 
 
 //########################################################################
+//#   Per-Device MQTT Topics
+//#     status  - published by XIAO to report current state
+//#     command - subscribed by XIAO to receive HA commands
+//########################################################################
+const char topicKriaStatus[]    = "puch_rack/kria/status";
+const char topicKriaCtrl[]      = "puch_rack/kria/command";
+const char topicPynqz1Status[]  = "puch_rack/pynqz1/status";
+const char topicPynqz1Ctrl[]    = "puch_rack/pynqz1/command";
+const char topicPluto1Status[]  = "puch_rack/pluto1/status";
+const char topicPluto1Ctrl[]    = "puch_rack/pluto1/command";
+const char topicPluto2Status[]  = "puch_rack/pluto2/status";
+const char topicPluto2Ctrl[]    = "puch_rack/pluto2/command";
+const char topicFanStatus[]     = "puch_rack/fan/status";
+const char topicFanCtrl[]       = "puch_rack/fan/command";
+const char topicWifiRssi[]      = "puch_rack/wifi/rssi";
+
+const char* ctrlTopics[] = {
+  topicKriaCtrl,
+  topicPynqz1Ctrl,
+  topicPluto1Ctrl,
+  topicPluto2Ctrl,
+  topicFanCtrl,
+};
+const size_t ctrlTopicCount = sizeof(ctrlTopics) / sizeof(ctrlTopics[0]);
+
+
+//########################################################################
 //#   Initial Commands Structure - Status to send on boot
 //########################################################################
 struct {
@@ -97,39 +124,45 @@ struct {
   bool isAnalog;
   uint8_t analogValue;
   const char* feedback;
+  const char* statusTopic;
 } initCommands[] = {
-  {KRIA_PIN,    0, false, 0,        "KRIA-OFF"},    
-  {PYNQZ1_PIN,  0, false, 0,        "PYNQZ1-OFF"},  
-  {PLUTO1_PIN,  0, false, 0,        "PLUTO-1-OFF"}, 
-  {PLUTO2_PIN,  0, false, 0,        "PLUTO-2-OFF"},    
-  {FAN_PWM_PIN, 0, true,  FAN_HIGH, "FAN-HIGH"},    
+  {KRIA_PIN,    0, false, 0,        "OFF",  topicKriaStatus},
+  {PYNQZ1_PIN,  0, false, 0,        "OFF",  topicPynqz1Status},
+  {PLUTO1_PIN,  0, false, 0,        "OFF",  topicPluto1Status},
+  {PLUTO2_PIN,  0, false, 0,        "OFF",  topicPluto2Status},
+  {FAN_PWM_PIN, 0, true,  FAN_HIGH, "HIGH", topicFanStatus},
 };
 const size_t initCommandCount = sizeof(initCommands) / sizeof(initCommands[0]);
 
 
 //########################################################################
 //#   Command Structure
+//#     ctrlTopic   - the MQTT topic this command is received on
+//#     command     - expected payload (ON/OFF for switches, speed for fan)
+//#     statusTopic - topic to publish the resulting state to
 //########################################################################
 struct {
+  const char* ctrlTopic;
   const char* command;
   uint8_t espPin;
   bool state;
   bool isAnalog;
   uint8_t analogValue;
   const char* feedback;
+  const char* statusTopic;
 } commands[] = {
-  {"KRIA-ON",     KRIA_PIN,    1, false, 0,        "KRIA-ON"},
-  {"KRIA-OFF",    KRIA_PIN,    0, false, 0,        "KRIA-OFF"},
-  {"PYNQZ1-ON",   PYNQZ1_PIN,  1, false, 0,        "PYNQZ1-ON"},
-  {"PYNQZ1-OFF",  PYNQZ1_PIN,  0, false, 0,        "PYNQZ1-OFF"},
-  {"PLUTO-1-ON",  PLUTO1_PIN,  1, false, 0,        "PLUTO-1-ON"},
-  {"PLUTO-1-OFF", PLUTO1_PIN,  0, false, 0,        "PLUTO-1-OFF"},
-  {"PLUTO-2-ON",  PLUTO2_PIN,  1, false, 0,        "PLUTO-2-ON"},
-  {"PLUTO-2-OFF", PLUTO2_PIN,  0, false, 0,        "PLUTO-2-OFF"},
-  {"FAN-OFF",     FAN_PWM_PIN, 0, true,  FAN_OFF,  "FAN-OFF"},
-  {"FAN-LOW",     FAN_PWM_PIN, 0, true,  FAN_LOW,  "FAN-LOW"},
-  {"FAN-MED",     FAN_PWM_PIN, 0, true,  FAN_MED,  "FAN-MED"},
-  {"FAN-HIGH",    FAN_PWM_PIN, 0, true,  FAN_HIGH, "FAN-HIGH"},
+  {topicKriaCtrl,   "ON",   KRIA_PIN,    1, false, 0,        "ON",   topicKriaStatus},
+  {topicKriaCtrl,   "OFF",  KRIA_PIN,    0, false, 0,        "OFF",  topicKriaStatus},
+  {topicPynqz1Ctrl, "ON",   PYNQZ1_PIN,  1, false, 0,        "ON",   topicPynqz1Status},
+  {topicPynqz1Ctrl, "OFF",  PYNQZ1_PIN,  0, false, 0,        "OFF",  topicPynqz1Status},
+  {topicPluto1Ctrl, "ON",   PLUTO1_PIN,  1, false, 0,        "ON",   topicPluto1Status},
+  {topicPluto1Ctrl, "OFF",  PLUTO1_PIN,  0, false, 0,        "OFF",  topicPluto1Status},
+  {topicPluto2Ctrl, "ON",   PLUTO2_PIN,  1, false, 0,        "ON",   topicPluto2Status},
+  {topicPluto2Ctrl, "OFF",  PLUTO2_PIN,  0, false, 0,        "OFF",  topicPluto2Status},
+  {topicFanCtrl,    "OFF",  FAN_PWM_PIN, 0, true,  FAN_OFF,  "OFF",  topicFanStatus},
+  {topicFanCtrl,    "LOW",  FAN_PWM_PIN, 0, true,  FAN_LOW,  "LOW",  topicFanStatus},
+  {topicFanCtrl,    "MED",  FAN_PWM_PIN, 0, true,  FAN_MED,  "MED",  topicFanStatus},
+  {topicFanCtrl,    "HIGH", FAN_PWM_PIN, 0, true,  FAN_HIGH, "HIGH", topicFanStatus},
 };
 const size_t commandCount = sizeof(commands) / sizeof(commands[0]);
 
@@ -158,8 +191,6 @@ MqttClient mqttClient(wifiClient);
 
 const char  broker[]        = "nuc-sdr";
 int         port            = 1883;
-const char  topicStatus[]   = "puch_rack/status";
-const char  topicCtrl[]     = "puch_rack/control";
 
 // MQTT Settings
 const int  MQTT_QoS         = 1;  // 0,1,2
@@ -225,13 +256,11 @@ void connectMQTT() {
 
   if (mqttClient.connected()) {
     Log.info("MQTT connected to broker!" CR);
-    // set the message receive callback
-    Log.info("Subscribing to status/feedback topic: %s" CR, topicStatus);
     mqttClient.onMessage(onMqttMessage);
-    // subscribe to a topic
-    Log.info("Subscribing to command/control topic: %s" CR, topicCtrl);
-    mqttClient.subscribe(topicCtrl, MQTT_QoS);
-    // Publish current WiFi RSSI on connect
+    for (size_t i = 0; i < ctrlTopicCount; i++) {
+      Log.info("Subscribing to: %s" CR, ctrlTopics[i]);
+      mqttClient.subscribe(ctrlTopics[i], MQTT_QoS);
+    }
     publishWiFiRSSI();
   } else {
     Log.error("MQTT connection failed!" CR);
@@ -276,12 +305,11 @@ void setup() {
   if (mqttClient.connected()) {
     Log.info("Publishing initial status..." CR);
     for (size_t i = 0; i < initCommandCount; i++) {
-      mqttClient.beginMessage(topicStatus, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
+      mqttClient.beginMessage(initCommands[i].statusTopic, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
       mqttClient.print(initCommands[i].feedback);
       mqttClient.endMessage();
-      Log.info("Published: %s" CR, initCommands[i].feedback);
+      Log.info("Published to %s: %s" CR, initCommands[i].statusTopic, initCommands[i].feedback);
     }
-    // Publish WiFi RSSI as a status entry
     publishWiFiRSSI();
   }
 }
@@ -305,20 +333,20 @@ void handleReconnection() {
   }
 }
 
-// Publish WiFi RSSI (dBm) to topicStatus as "WiFiRSSI:<value>"
+// Publish WiFi RSSI (dBm) to topicWifiRssi as a plain numeric value
 void publishWiFiRSSI() {
   if (!mqttClient.connected()) return;
   if (WiFi.status() != WL_CONNECTED) return;
 
   long rssi = WiFi.RSSI();
-  char buf[32];
-  snprintf(buf, sizeof(buf), "WiFiRSSI:%ld", rssi);
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%ld", rssi);
 
-  mqttClient.beginMessage(topicStatus, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
+  mqttClient.beginMessage(topicWifiRssi, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
   mqttClient.print(buf);
   mqttClient.endMessage();
 
-  Log.info("Published: %s" CR, buf);
+  Log.info("Published to %s: %s" CR, topicWifiRssi, buf);
 }
 
 
@@ -349,38 +377,35 @@ void loop() {
 //#   Process MQTT Messages
 //########################################################################
 void onMqttMessage(int messageSize) {
-  Log.info("Received message with topic: %s, bytes: %d" CR,mqttClient.messageTopic().c_str(),messageSize);
+  String topic = mqttClient.messageTopic();
+  Log.info("Received message with topic: %s, bytes: %d" CR, topic.c_str(), messageSize);
 
-  // Create a string with the MQTT message
   String content = "";
   for (size_t i = 0; i < messageSize; i++) {
     content.concat((char)mqttClient.read());
   }
 
-  // Parse through message, and execute message
   bool found = false;
   for (size_t i = 0; i < commandCount; i++) {
-    if (content == commands[i].command) {
-      Log.info("Executing: %s" CR,commands[i].feedback);
+    if (topic == commands[i].ctrlTopic && content == commands[i].command) {
+      Log.info("Executing: %s -> %s" CR, topic.c_str(), content.c_str());
 
-      // Drive pins or set fan speed
       if (commands[i].isAnalog) {
         analogWrite(commands[i].espPin, commands[i].analogValue);
       } else {
         digitalWrite(commands[i].espPin, commands[i].state);
       }
-     
-      // Send Feedback message over MQTT
-      mqttClient.beginMessage(topicStatus, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
+
+      mqttClient.beginMessage(commands[i].statusTopic, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
       mqttClient.print(commands[i].feedback);
       mqttClient.endMessage();
-      
+
       found = true;
       break;
     }
   }
-  
+
   if (!found) {
-    Log.error("Unknown command: %s" CR, content);
+    Log.error("Unknown command on topic %s: %s" CR, topic.c_str(), content.c_str());
   }
 }
