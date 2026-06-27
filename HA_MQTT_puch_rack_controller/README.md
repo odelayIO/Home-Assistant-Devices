@@ -67,13 +67,13 @@ sensor:
 
 select:
   - name: "Rack Fan Mode"
-    state_topic: "puch_rack/status"
-    command_topic: "puch_rack/control"
+    state_topic: "puch_rack/fan/status"
+    command_topic: "puch_rack/fan/control"
     options:
-      - "FAN-OFF"
-      - "FAN-LOW"
-      - "FAN-MED"
-      - "FAN-HIGH"
+      - "OFF"
+      - "LOW"
+      - "MED"
+      - "HIGH"
     qos: 1
     retain: false
     optimistic: false
@@ -81,34 +81,34 @@ select:
 
 switch:
   - name: "KRIA Board"
-    state_topic: "puch_rack/status"
-    command_topic: "puch_rack/control"
-    payload_on: "KRIA-ON"
-    payload_off: "KRIA-OFF"
+    state_topic: "puch_rack/kria/status"
+    command_topic: "puch_rack/kria/control"
+    payload_on: "ON"
+    payload_off: "OFF"
     qos: 1
     retain: false
     unique_id: "kria_board_001"
   - name: "PYNQ-Z1 Board"
-    state_topic: "puch_rack/status"
-    command_topic: "puch_rack/control"
-    payload_on: "PYNQZ1-ON"
-    payload_off: "PYNQZ1-OFF"
+    state_topic: "puch_rack/pynqz1/status"
+    command_topic: "puch_rack/pynqz1/control"
+    payload_on: "ON"
+    payload_off: "OFF"
     qos: 1
     retain: false
     unique_id: "pynqz1_board_001"
   - name: "Pluto SDR-1"
-    state_topic: "puch_rack/status"
-    command_topic: "puch_rack/control"
-    payload_on: "PLUTO-1-ON"
-    payload_off: "PLUTO-1-OFF"
+    state_topic: "puch_rack/pluto1/status"
+    command_topic: "puch_rack/pluto1/control"
+    payload_on: "ON"
+    payload_off: "OFF"
     qos: 1
     retain: false
     unique_id: "pluto_sdr_1_001"
   - name: "Pluto SDR-2"
-    state_topic: "puch_rack/status"
-    command_topic: "puch_rack/control"
-    payload_on: "PLUTO-2-ON"
-    payload_off: "PLUTO-2-OFF"
+    state_topic: "puch_rack/pluto2/status"
+    command_topic: "puch_rack/pluto2/control"
+    payload_on: "ON"
+    payload_off: "OFF"
     qos: 1
     retain: false
     unique_id: "pluto_sdr_2_001"
