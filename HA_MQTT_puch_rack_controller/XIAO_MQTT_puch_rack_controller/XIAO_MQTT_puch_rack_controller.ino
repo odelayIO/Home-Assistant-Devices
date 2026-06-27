@@ -218,17 +218,6 @@ void setup() {
   Log.begin(LOG_LEVEL, &Serial);
   Log.info("Setup Started..." CR);
 
-  // Initialize pins and apply boot state
-  for (size_t i = 0; i < deviceCount; i++) {
-    pinMode(devices[i].espPin, OUTPUT);
-    if (devices[i].isAnalog) {
-      analogWriteResolution(devices[i].espPin, PWM_RES);
-      analogWriteFrequency(devices[i].espPin, PWM_FREQ);
-      analogWrite(devices[i].espPin, devices[i].initAnalogVal);
-    } else {
-      digitalWrite(devices[i].espPin, devices[i].initState);
-    }
-  }
 
   mqttClient.setId("puch-Rack-Controller");
   mqttClient.setUsernamePassword(mqtt_user, mqtt_pass);
@@ -244,6 +233,21 @@ void setup() {
       mqttClient.print(devices[i].initPayload);
       mqttClient.endMessage();
       Log.info("Published [%s]: %s" CR, devices[i].statusTopic, devices[i].initPayload);
+    }
+  }
+
+  // Initialize pins and apply boot state
+  for (size_t i = 0; i < deviceCount; i++) {
+    pinMode(devices[i].espPin, OUTPUT);
+    if (devices[i].isAnalog) {
+      analogWriteResolution(devices[i].espPin, PWM_RES);
+      analogWriteFrequency(devices[i].espPin, PWM_FREQ);
+      analogWrite(devices[i].espPin, devices[i].initAnalogVal);
+      //analogWrite(devices[i].espPin, FAN_HIGH);
+      Log.info("Setting FAN to init speed: %d" CR, devices[i].initAnalogVal);
+    } else {
+      digitalWrite(devices[i].espPin, devices[i].initState);
+      Log.info("Setting Pin: %d, to init value: %d" CR, devices[i].espPin, devices[i].initState);
     }
   }
 }
