@@ -152,7 +152,14 @@ const int   MQTT_TIMEOUT_SEC = 10;  // Try connecting for 10 seconds
 
 // RSSI publish timing
 unsigned long lastRssiPublish = 0;
-const unsigned long RSSI_PUBLISH_INTERVAL_MS = 10000; // publish every 60s
+const unsigned long RSSI_PUBLISH_INTERVAL_MS = 60000; // publish every 60s
+
+// Deferred status echo (set by onMqttMessage, published from loop).
+// Publishing at QoS 1 from inside the message callback re-enters the
+// MQTT client while it may already be waiting on a PUBACK, clobbering
+// its shared packet-id/return-code state.
+volatile int  pendingStatusIdx = -1;
+String        pendingStatusPayload;
 
 
 
@@ -163,6 +170,10 @@ const unsigned long RSSI_PUBLISH_INTERVAL_MS = 10000; // publish every 60s
 void connectWiFi() {
   Log.info("Attempting to connect to WPA SSID: %s" CR, ssid);
   WiFi.begin(ssid, pass);
+<<<<<<< HEAD
+=======
+  WiFi.setSleep(false);
+>>>>>>> 26623c4 (fixed WiFi timeout issue)
 
   int timeout = 0;
   while ((WiFi.status() != WL_CONNECTED) && (timeout < WIFI_TIMEOUT_SEC)) {
@@ -262,18 +273,38 @@ void handleReconnection() {
   if (WiFi.status() != WL_CONNECTED) {
     Log.warning("WiFi disconnected. Attempting to reconnect..." CR);
     connectWiFi();
-    if (WiFi.status() == WL_CONNECTED) {
-      if (!mqttClient.connected()) {
-        Log.warning("MQTT disconnected. Attempting to reconnect..." CR);
-        connectMQTT();
-      }
-    }
   }
+  //} else {
+  //  Log.info("WiFi Connected." CR);
+  //}
+
+  // Check MQTT independently: the broker connection can drop
+  // while WiFi stays up, and it must be recovered here too.
+  if ((WiFi.status() == WL_CONNECTED) && !mqttClient.connected()) {
+    Log.warning("MQTT disconnected. Attempting to reconnect..." CR);
+    connectMQTT();
+  }
+  //} else {
+  //  Log.info("MQTT Client Connected." CR);
+  //}
+
 }
 
 // Publish WiFi RSSI (dBm) to topicWiFi
+<<<<<<< HEAD
 void publishWiFiRSSI() {
   mqttClient.beginMessage(topicWiFi, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
+=======
+// NOTE: QoS 0 on purpose. With ArduinoMqttClient, a QoS 1 publish blocks
+// inside endMessage() waiting for the PUBACK (up to 30s on a bad link),
+// which stalls loop() and can corrupt in-flight publish state when a
+// control message arrives mid-wait. RSSI is telemetry; losing one
+// sample is fine.
+void publishWiFiRSSI() {
+  if (!mqttClient.connected()) return;
+
+  mqttClient.beginMessage(topicWiFi, MQTT_RETAIN, 0, MQTT_DUP);
+>>>>>>> 26623c4 (fixed WiFi timeout issue)
   mqttClient.print(WiFi.RSSI());
   mqttClient.endMessage();
 
@@ -293,6 +324,16 @@ void loop() {
 
   // Check and handle WiFi/MQTT connection
   handleReconnection();
+
+  // Publish any status echo deferred from onMqttMessage()
+  if (pendingStatusIdx >= 0 && mqttClient.connected()) {
+    int idx = pendingStatusIdx;
+    pendingStatusIdx = -1;
+    mqttClient.beginMessage(devices[idx].statusTopic, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
+    mqttClient.print(pendingStatusPayload);
+    mqttClient.endMessage();
+    Log.info("Published [%s]: %s" CR, devices[idx].statusTopic, pendingStatusPayload.c_str());
+  }
 
   // Periodically publish RSSI
   if ((millis() - lastRssiPublish) >= RSSI_PUBLISH_INTERVAL_MS) {
@@ -349,10 +390,17 @@ void onMqttMessage(int messageSize) {
 
     Log.info("Executed [%s]: %s" CR, topic.c_str(), payload.c_str());
 
+<<<<<<< HEAD
     // Echo payload back on the status topic
     mqttClient.beginMessage(devices[i].statusTopic, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
     mqttClient.print(payload);
     mqttClient.endMessage();
+=======
+    // Defer the status echo to loop() — do not publish (QoS 1)
+    // from inside the message callback.
+    pendingStatusPayload = payload;
+    pendingStatusIdx = (int)i;
+>>>>>>> 26623c4 (fixed WiFi timeout issue)
     return;
   }
 
