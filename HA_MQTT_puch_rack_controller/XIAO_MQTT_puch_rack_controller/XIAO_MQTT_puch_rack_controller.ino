@@ -50,7 +50,7 @@
 //###########################################################################################
 #include <ArduinoMqttClient.h>
 #include <WiFi.h>
-#include <WiFiClient.h>
+//#include <WiFiClient.h>
 #include "arduino_secrets.h"
 #include "ArduinoLog.h"
 
@@ -170,10 +170,7 @@ String        pendingStatusPayload;
 void connectWiFi() {
   Log.info("Attempting to connect to WPA SSID: %s" CR, ssid);
   WiFi.begin(ssid, pass);
-<<<<<<< HEAD
-=======
   WiFi.setSleep(false);
->>>>>>> 26623c4 (fixed WiFi timeout issue)
 
   int timeout = 0;
   while ((WiFi.status() != WL_CONNECTED) && (timeout < WIFI_TIMEOUT_SEC)) {
@@ -291,10 +288,6 @@ void handleReconnection() {
 }
 
 // Publish WiFi RSSI (dBm) to topicWiFi
-<<<<<<< HEAD
-void publishWiFiRSSI() {
-  mqttClient.beginMessage(topicWiFi, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
-=======
 // NOTE: QoS 0 on purpose. With ArduinoMqttClient, a QoS 1 publish blocks
 // inside endMessage() waiting for the PUBACK (up to 30s on a bad link),
 // which stalls loop() and can corrupt in-flight publish state when a
@@ -304,7 +297,6 @@ void publishWiFiRSSI() {
   if (!mqttClient.connected()) return;
 
   mqttClient.beginMessage(topicWiFi, MQTT_RETAIN, 0, MQTT_DUP);
->>>>>>> 26623c4 (fixed WiFi timeout issue)
   mqttClient.print(WiFi.RSSI());
   mqttClient.endMessage();
 
@@ -390,17 +382,10 @@ void onMqttMessage(int messageSize) {
 
     Log.info("Executed [%s]: %s" CR, topic.c_str(), payload.c_str());
 
-<<<<<<< HEAD
-    // Echo payload back on the status topic
-    mqttClient.beginMessage(devices[i].statusTopic, MQTT_RETAIN, MQTT_QoS, MQTT_DUP);
-    mqttClient.print(payload);
-    mqttClient.endMessage();
-=======
     // Defer the status echo to loop() — do not publish (QoS 1)
     // from inside the message callback.
     pendingStatusPayload = payload;
     pendingStatusIdx = (int)i;
->>>>>>> 26623c4 (fixed WiFi timeout issue)
     return;
   }
 
