@@ -74,3 +74,23 @@ Created a wireless moisture sensor which updates the moisture level on a IOS/And
 ### Library
 
 ![image-20240902152924972](./docs/image-20240902152924972.png)
+
+
+
+## WiFi, MQTT, and Blynk Credentials
+
+The firmware reads the WiFi, MQTT broker, and Blynk credentials from `arduino_secrets.h`, which is not stored in the repository.  Before building, rename (or copy) `arduino_secrets.example` to `arduino_secrets.h` in the `HA_MQTT_Blynk_Planter_Sensor/` sketch folder and fill in your credentials:
+
+```c
+#define SECRET_SSID "your-wifi-ssid"
+#define SECRET_PASS "your-wifi-password"
+
+#define SECRET_MQTT_USER "your-mqtt-username"
+#define SECRET_MQTT_PASS "your-mqtt-password"
+
+#define BLYNK_TEMPLATE_ID "your-blynk-template-id"
+#define BLYNK_TEMPLATE_NAME "your-blynk-template-name"
+#define BLYNK_AUTH_TOKEN "your-blynk-auth-token"
+```
+
+`arduino_secrets.h` is listed in the repository's `.gitignore`, so the file will be ignored when committing changes and your credentials stay local.

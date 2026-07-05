@@ -1,0 +1,3 @@
+# Never commit WiFi/MQTT credentials — copy arduino_secrets.example
+# to arduino_secrets.h in each sketch folder and fill in your values.
+arduino_secrets.h

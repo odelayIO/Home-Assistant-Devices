@@ -7,6 +7,10 @@ Clone `Home-Assistant-Devices`:
 git clone --recursive git@github.com:odelayIO/Home-Assistant-Devices.git
 ```
 
+## WiFi and MQTT Credentials
+
+Each Arduino sketch folder contains an `arduino_secrets.example` template.  Rename (or copy) it to `arduino_secrets.h` in the same folder and fill in your WiFi and MQTT credentials before building the firmware.  `arduino_secrets.h` is listed in `.gitignore`, so the file will be ignored when committing changes to the repository and your credentials stay local.
+
 **Under Construction**
 
 To Do:
