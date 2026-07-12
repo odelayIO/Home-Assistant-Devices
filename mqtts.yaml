@@ -1,0 +1,209 @@
+sensor:
+# -------------------------------
+#     Garage Door Sensor
+# -------------------------------
+  - name: "Garage Door Sensor Raw"
+    state_topic: "garage/door"
+    qos: 0
+    unit_of_measurement: "in"
+    unique_id: "nano_mqtt_garage_001"
+    device: &garage_device
+      identifiers: ["garage-sensor"]
+      name: "Garage Sensor"
+      manufacturer: "odelay.io"
+      model: "NodeMCU"
+  - name: "Garage Temperature"
+    state_topic: "garage/temperature"
+    qos: 0
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+    suggested_display_precision: 2
+    unique_id: "garage_temp_001"
+    device: *garage_device
+  - name: "Garage Humidity"
+    state_topic: "garage/humidity"
+    qos: 0
+    unit_of_measurement: "%"
+    icon: mdi:water-percent
+    suggested_display_precision: 2
+    unique_id: "garage_humidity_001"
+    device: *garage_device
+  - name: "Garage WiFi RSSI"
+    state_topic: "garage/rssi"
+    qos: 0
+    unit_of_measurement: "dBm"
+    icon: mdi:wifi
+    suggested_display_precision: 0
+    unique_id: "garage_rssi_001"
+    device: *garage_device
+
+# -------------------------------
+#     Main Wine Frig
+# -------------------------------
+  - name: "Main Wine Frig Temperature"
+    state_topic: "wine_frig/main/temperature"
+    qos: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+    suggested_display_precision: 2
+    unique_id: "main_wine_frig_temp_001"
+    device: &main_wine_frig_device
+      identifiers: ["wine-frig-main"]
+      name: "Main Wine Frig Sensor"
+      manufacturer: "odelay.io"
+      model: "Arduino Nano"
+  - name: "Main Wine Frig Humidity"
+    state_topic: "wine_frig/main/humidity"
+    qos: 1
+    unit_of_measurement: "%"
+    icon: mdi:water-percent
+    suggested_display_precision: 2
+    unique_id: "main_wine_frig_humidity_001"
+    device: *main_wine_frig_device
+
+# -------------------------------
+#     Small Wine Frig
+# -------------------------------
+  - name: "Small Wine Frig Temperature"
+    state_topic: "wine_frig/small/temperature"
+    qos: 1
+    unit_of_measurement: "°F"
+    icon: mdi:thermometer
+    suggested_display_precision: 2
+    unique_id: "small_wine_frig_temp_001"
+    device: &small_wine_frig_device
+      identifiers: ["wine-frig-small"]
+      name: "Small Wine Frig Sensor"
+      manufacturer: "odelay.io"
+      model: "XIAO ESP32-C3 + SHT31"
+  - name: "Small Wine Frig Humidity"
+    state_topic: "wine_frig/small/humidity"
+    qos: 1
+    unit_of_measurement: "%"
+    icon: mdi:water-percent
+    suggested_display_precision: 2
+    unique_id: "small_wine_frig_humidity_001"
+    device: *small_wine_frig_device
+  - name: "Small Wine Frig Battery"
+    state_topic: "wine_frig/small/battery"
+    qos: 1
+    unit_of_measurement: "%"
+    device_class: battery
+    state_class: measurement
+    entity_category: diagnostic
+    suggested_display_precision: 2
+    unique_id: "small_wine_frig_battery_001"
+    device: *small_wine_frig_device
+
+# -------------------------------
+#   dev-wks Computer
+# -------------------------------
+  - name: "dev-wks Temperature-Composite"
+    state_topic: "puch_rack/nvme/composite"
+    qos: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    suggested_display_precision: 2
+    unique_id: "puch_rack_nvme_temp_001"
+    device: &dev_wks_device
+      identifiers: ["dev-wks-nvme"]
+      name: "dev-wks NVMe Monitor"
+      manufacturer: "odelay.io"
+      model: "Linux systemd service"
+  - name: "dev-wks NVMe Temperature"
+    state_topic: "puch_rack/nvme/sensor_1"
+    qos: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    suggested_display_precision: 2
+    unique_id: "puch_rack_nvme_temp_002"
+    device: *dev_wks_device
+  - name: "dev-wks Composite Temperature"
+    state_topic: "puch_rack/nvme/sensor_2"
+    qos: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    suggested_display_precision: 2
+    unique_id: "puch_rack_nvme_temp_003"
+    device: *dev_wks_device
+
+# -------------------------------
+#     puch Rack
+# -------------------------------
+  - name: "puch Rack WiFi RSSI"
+    state_topic: "puch_rack/WiFiRSSI"
+    unit_of_measurement: "dBm"
+    device_class: signal_strength
+    state_class: measurement
+    qos: 1
+    unique_id: "puch_rack_rssi_001"
+    device: &puch_rack_device
+      identifiers: ["puch-rack-controller"]
+      name: "Puch Rack Controller"
+      manufacturer: "odelay.io"
+      model: "XIAO ESP32-C3"
+select:
+  - name: "Rack Fan Mode"
+    state_topic: "puch_rack/fan/status"
+    command_topic: "puch_rack/fan/control"
+    options:
+      - "OFF"
+      - "LOW"
+      - "MED"
+      - "HIGH"
+    qos: 1
+    retain: false
+    optimistic: false
+    unique_id: "rack_fan_mode_001"
+    device: *puch_rack_device
+switch:
+  - name: "KRIA Board"
+    state_topic: "puch_rack/kria/status"
+    command_topic: "puch_rack/kria/control"
+    payload_on: "ON"
+    payload_off: "OFF"
+    qos: 1
+    retain: false
+    unique_id: "kria_board_001"
+    device: *puch_rack_device
+  - name: "PYNQ-Z1 Board"
+    state_topic: "puch_rack/pynqz1/status"
+    command_topic: "puch_rack/pynqz1/control"
+    payload_on: "ON"
+    payload_off: "OFF"
+    qos: 1
+    retain: false
+    unique_id: "pynqz1_board_001"
+    device: *puch_rack_device
+  - name: "Pluto SDR-1"
+    state_topic: "puch_rack/pluto1/status"
+    command_topic: "puch_rack/pluto1/control"
+    payload_on: "ON"
+    payload_off: "OFF"
+    qos: 1
+    retain: false
+    unique_id: "pluto_sdr_1_001"
+    device: *puch_rack_device
+  - name: "Pluto SDR-2"
+    state_topic: "puch_rack/pluto2/status"
+    command_topic: "puch_rack/pluto2/control"
+    payload_on: "ON"
+    payload_off: "OFF"
+    qos: 1
+    retain: false
+    unique_id: "pluto_sdr_2_001"
+    device: *puch_rack_device
+
+      # light:
+      #   - name: "X10 Living Room Light"
+      #     state_topic: "x10/status"
+      #     command_topic: "x10/switch"
+      #     qos: 2
+      #     payload_off: "LIVINGROOM-OFF"
+      #     payload_on: "LIVINGROOM-ON"
+      #   - name: "X10 Dining Room Light"
+      #     state_topic: "x10/status"
+      #     command_topic: "x10/switch"
+      #     qos: 2
+      #     payload_off: "DININGROOM-OFF"
+      #     payload_on: "DININGROOM-ON"
