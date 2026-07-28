@@ -1,20 +1,3 @@
-# HA MQTT Auto-Discovered Device
-
-
-
-
-
-## Battery Discharge Monitoring
-
-Charged 750mAh battery and monitored the battery voltage level to create a valid percent status.  
-
-![battery_discharge_plot](./battery_discharge_plot.png)
-
-
-
-Created code block to update the battery percent using piecewise table:
-
-```c++
 /*
  * battery_percent.ino
  * -------------------
@@ -112,6 +95,3 @@ void loop() {
 
   delay(2000);
 }
-
-```
-

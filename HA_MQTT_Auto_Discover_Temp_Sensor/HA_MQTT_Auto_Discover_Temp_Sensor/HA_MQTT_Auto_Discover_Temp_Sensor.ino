@@ -76,7 +76,7 @@
 //    System Parameters (identical for every device)
 //*********************************************************************
 
-#define UPDATE_RATE_SEC     3
+#define UPDATE_RATE_SEC     10
 #define uS_TO_SEC_FACTOR    1000000ULL
 
 // Ground Pin D3 and reboot to stop deep sleep (for re-flashing).
@@ -86,8 +86,8 @@
 #define WIFI_FAST_TIMEOUT_MS    5000
 #define WIFI_FULL_TIMEOUT_MS    20000
 
-#define LOG_LEVEL LOG_LEVEL_VERBOSE
-//#define LOG_LEVEL LOG_LEVEL_SILENT
+//#define LOG_LEVEL LOG_LEVEL_VERBOSE
+#define LOG_LEVEL LOG_LEVEL_SILENT
 
 // MQTT Broker
 const char broker[]  = "nuc-sdr";
@@ -141,6 +141,52 @@ void build_device_identity() {
   snprintf(stateTopic, sizeof(stateTopic), "sensors/%s/state", deviceId);
   Log.info("Device ID: %s" CR, deviceId);
 }
+
+
+
+//*********************************************************************
+//    Picewise Lookup Table to calculate battery percent
+//*********************************************************************
+
+// Calibration table: voltage (mV) -> percent. MUST be sorted ascending by mV.
+// Derived from a measured 750 mAh 1S LiPo full discharge (see header).
+struct SocPoint { uint16_t mV; uint8_t pct; };
+
+const SocPoint SOC_TABLE[] = {
+  {2745,   0}, {3310,   5}, {3380,  10}, {3430,  15}, {3480,  20},
+  {3520,  25}, {3560,  30}, {3610,  35}, {3660,  40}, {3700,  45},
+  {3740,  50}, {3760,  55}, {3800,  60}, {3830,  65}, {3870,  70},
+  {3910,  75}, {3930,  80}, {3940,  85}, {3950,  90}, {3990,  95},
+  {4040, 100}
+};
+const uint8_t SOC_TABLE_LEN = sizeof(SOC_TABLE) / sizeof(SOC_TABLE[0]);
+
+/*
+ * Return battery percentage (0-100) for a given cell voltage in VOLTS.
+ * Uses linear interpolation between the two nearest table points.
+ */
+float batteryPercent(float volts) {
+  uint16_t mV = (uint16_t)(volts * 1000.0f + 0.5f);   // volts -> millivolts
+
+  // Clamp to the ends of the table.
+  if (mV <= SOC_TABLE[0].mV)                return 0.0f;
+  if (mV >= SOC_TABLE[SOC_TABLE_LEN - 1].mV) return 100.0f;
+
+  // Find the segment [i, i+1] that contains mV, then interpolate.
+  for (uint8_t i = 0; i < SOC_TABLE_LEN - 1; i++) {
+    const SocPoint &lo = SOC_TABLE[i];
+    const SocPoint &hi = SOC_TABLE[i + 1];
+    if (mV >= lo.mV && mV <= hi.mV) {
+      float frac = (float)(mV - lo.mV) / (float)(hi.mV - lo.mV);
+      return lo.pct + frac * (hi.pct - lo.pct);
+    }
+  }
+  return 0.0f;  // unreachable
+}
+
+
+
+
 
 
 //*********************************************************************
@@ -214,10 +260,16 @@ void publish_discovery_entity(const char* key,        // JSON key in state paylo
                               const char* niceName,   // entity name shown in HA
                               const char* devClass,   // HA device_class
                               const char* unit,
-                              bool diagnostic = false) { // true => shown in HA "Diagnostic" section
+                              bool diagnostic = false,  // true => shown in HA "Diagnostic" section
+                              int8_t precision = -1) { // decimal places HA should display (-1 = HA default)
   char cfgTopic[96];
   snprintf(cfgTopic, sizeof(cfgTopic), "%s/sensor/%s-%s/config",
            DISCOVERY_PREFIX, deviceId, key);
+
+  char precisionField[24] = "";
+  if (precision >= 0) {
+    snprintf(precisionField, sizeof(precisionField), "\"sug_dsp_prc\":%d,", precision);
+  }
 
   char payload[512];
   snprintf(payload, sizeof(payload),
@@ -230,6 +282,7 @@ void publish_discovery_entity(const char* key,        // JSON key in state paylo
       "\"unit_of_meas\":\"%s\","
       "\"stat_cla\":\"measurement\","
       "%s"
+      "%s"
       "\"exp_aft\":%d,"
       "\"dev\":{"
         "\"ids\":[\"%s\"],"
@@ -240,6 +293,7 @@ void publish_discovery_entity(const char* key,        // JSON key in state paylo
     "}",
     niceName, deviceId, key, stateTopic, key, devClass, unit,
     diagnostic ? "\"ent_cat\":\"diagnostic\"," : "",
+    precisionField,
     EXPIRE_AFTER_SEC, deviceId, deviceId);
 
   // retain=true so HA re-reads configs after its own restarts.
@@ -256,6 +310,7 @@ void publish_discovery() {
                            USE_FAHRENHEIT ? "\u00b0F" : "\u00b0C");
   publish_discovery_entity("humidity",    "Humidity",    "humidity",  "%");
   publish_discovery_entity("battery",     "Battery",     "battery",   "%");
+  publish_discovery_entity("battery_voltage", "Battery Voltage", "voltage", "V", true, 2);
   publish_discovery_entity("rssi",        "WiFi Signal", "signal_strength", "dBm", true);
   rtcDiscoverySent = true;
 }
@@ -278,18 +333,21 @@ void update_HA() {
   for (int i = 0; i < 16; i++) {
     batt_level += analogReadMilliVolts(A1); // GPIO1/D1
   }
-  float batt_lvl_float = ((batt_level / 16 / 1000.0) / 2.5) * 100.0;
-  if (batt_lvl_float > 100.0) batt_lvl_float = 100.0;
+  float batt_adc_volts = (batt_level / 16) / 1000.0; // volts measured at the ADC pin
+  // Battery is monitored through a voltage divider, so double the ADC
+  // reading to get the actual battery voltage.
+  float batt_voltage  = batt_adc_volts * 2.0;
+  float batt_percent = batteryPercent(batt_voltage);
 
   // WiFi signal strength (dBm). We're already connected, so this is free.
   int8_t rssi = WiFi.RSSI();
 
-  Log.info("T: %F  H: %F  Batt: %F  RSSI: %d" CR, sht_temp, sht_humid, batt_lvl_float, rssi);
+  Log.info("T: %F  H: %F  Batt: %F  BattV: %F  RSSI: %d" CR, sht_temp, sht_humid, batt_percent, batt_voltage, rssi);
 
-  char payload[128];
+  char payload[160];
   snprintf(payload, sizeof(payload),
-           "{\"temperature\":%.2f,\"humidity\":%.2f,\"battery\":%.1f,\"rssi\":%d}",
-           sht_temp, sht_humid, batt_lvl_float, rssi);
+           "{\"temperature\":%.2f,\"humidity\":%.2f,\"battery\":%.2f,\"battery_voltage\":%.2f,\"rssi\":%d}",
+           sht_temp, sht_humid, batt_percent, batt_voltage, rssi);
 
   // retain=true: HA shows the last reading immediately after its own restart,
   // instead of "unknown" until the next wake cycle
