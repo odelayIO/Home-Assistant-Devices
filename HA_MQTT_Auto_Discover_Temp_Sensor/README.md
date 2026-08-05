@@ -8,7 +8,7 @@
 
 Charged 750mAh battery and monitored the battery voltage level to create a valid percent status.  
 
-![battery_discharge_plot](./battery_discharge_plot.png)
+<img src="./batt_volt_percent_plot.png" alt="battery_discharge_plot" style="zoom:67%;" />
 
 
 
