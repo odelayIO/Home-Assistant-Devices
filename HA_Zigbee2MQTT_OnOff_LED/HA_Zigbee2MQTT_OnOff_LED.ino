@@ -1,9 +1,9 @@
-// Copyright 2025 Espressif Systems (Shanghai) PTE LTD
+// Copyright 2024 Espressif Systems (Shanghai) PTE LTD
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-//
+
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -13,58 +13,36 @@
 // limitations under the License.
 
 /**
- * @brief This example demonstrates a Zigbee router device that also
- * exposes an on/off light endpoint.
+ * @brief This example demonstrates simple Zigbee light bulb.
  *
- * Any Zigbee router relays/extends the mesh for other devices as an inherent
- * property of running in router mode - the dedicated ZigbeeRangeExtender
- * endpoint is only meant to be used on its own (no other endpoints) and is
- * unreliable when combined with a functional endpoint like a light. So this
- * example simply starts the device as ZIGBEE_ROUTER and adds a ZigbeeLight
- * endpoint, giving both range extension and a controllable on/off light.
+ * The example demonstrates how to use Zigbee library to create a end device light bulb.
+ * The light bulb is a Zigbee end device, which is controlled by a Zigbee coordinator.
  *
  * Proper Zigbee mode must be selected in Tools->Zigbee mode
  * and also the correct partition scheme must be selected in Tools->Partition Scheme.
  *
  * Please check the README.md for instructions and more detailed description.
+ *
+ * Created by Jan Procházka (https://github.com/P-R-O-C-H-Y/)
  */
 
 #include <Arduino.h>
-#ifndef ZIGBEE_MODE_ZCZR
-#error "Zigbee coordinator/router mode is not selected in Tools->Zigbee mode"
+#ifndef ZIGBEE_MODE_ED
+#error "Zigbee end device mode is not selected in Tools->Zigbee mode"
 #endif
 
 #include "Zigbee.h"
 
-/* Zigbee endpoint configuration */
-#define USE_CUSTOM_ZIGBEE_CONFIG 1
-#define ZIGBEE_LIGHT_ENDPOINT 1
-
-#ifndef LED_BUILTIN
-#define LED_BUILTIN 4
-#endif
-
+/* Zigbee light bulb configuration */
+#define ZIGBEE_LIGHT_ENDPOINT 10
 uint8_t led = LED_BUILTIN;
 uint8_t button = BOOT_PIN;
 
 ZigbeeLight zbLight = ZigbeeLight(ZIGBEE_LIGHT_ENDPOINT);
 
-/********************* LED functions ********************************/
+/********************* RGB LED functions **************************/
 void setLED(bool value) {
-  digitalWrite(led, value);
-}
-
-/************************** Identify ******************************/
-// Create a task on identify call to handle the identify function
-void identify(uint16_t time) {
-  static uint8_t blink = 1;
-  log_d("Identify called for %u seconds", time);
-  if (time == 0) {
-    digitalWrite(led, LOW);
-    return;
-  }
-  digitalWrite(led, blink);
-  blink = !blink;
+  digitalWrite(led, !value);
 }
 
 /********************* Arduino functions **************************/
@@ -73,35 +51,23 @@ void setup() {
 
   // Init LED and turn it OFF (if LED_PIN == RGB_BUILTIN, the rgbLedWrite() will be used under the hood)
   pinMode(led, OUTPUT);
-  digitalWrite(led, LOW);
+  digitalWrite(led, HIGH);
 
-  // Init button for factory reset and light toggle
+  // Init button for factory reset
   pinMode(button, INPUT_PULLUP);
 
-  // Optional: Set callback function for device identify
-  zbLight.onIdentify(identify);
-
-  // Optional: Set Zigbee device name and model
+  //Optional: set Zigbee device name and model
   zbLight.setManufacturerAndModel("Espressif", "ZBLightBulb");
 
   // Set callback function for light change
   zbLight.onLightChange(setLED);
 
-  // Add endpoint to Zigbee Core
+  //Add endpoint to Zigbee Core
   Serial.println("Adding ZigbeeLight endpoint to Zigbee Core");
   Zigbee.addEndpoint(&zbLight);
 
-#if USE_CUSTOM_ZIGBEE_CONFIG
-  // Optional: Create a custom Zigbee configuration for the router
-  esp_zb_cfg_t zigbeeConfig = ZIGBEE_DEFAULT_ROUTER_CONFIG();
-  zigbeeConfig.nwk_cfg.zczr_cfg.max_children = 20;  // 10 is default
-
-  // When all EPs are registered, start Zigbee with custom config
-  if (!Zigbee.begin(&zigbeeConfig)) {
-#else
-  // When all EPs are registered, start Zigbee as ROUTER device
-  if (!Zigbee.begin(ZIGBEE_ROUTER)) {
-#endif
+  // When all EPs are registered, start Zigbee. By default acts as ZIGBEE_END_DEVICE
+  if (!Zigbee.begin()) {
     Serial.println("Zigbee failed to start!");
     Serial.println("Rebooting...");
     ESP.restart();
@@ -116,7 +82,7 @@ void setup() {
 }
 
 void loop() {
-  // Checking button for factory reset and light toggle
+  // Checking button for factory reset
   if (digitalRead(button) == LOW) {  // Push button pressed
     // Key debounce handling
     delay(100);
