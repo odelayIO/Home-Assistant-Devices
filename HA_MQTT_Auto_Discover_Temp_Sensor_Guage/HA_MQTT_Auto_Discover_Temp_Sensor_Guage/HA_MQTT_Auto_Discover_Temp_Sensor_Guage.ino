@@ -119,7 +119,7 @@
 // MQTT Broker
 const char broker[]  = "nuc-sdr";
 int        port      = 1883;
-uint8_t    MQTT_QoS  = 1;
+uint8_t    MQTT_QoS  = 0;
 
 // HA MQTT Discovery prefix (HA default is "homeassistant")
 const char DISCOVERY_PREFIX[] = "homeassistant";

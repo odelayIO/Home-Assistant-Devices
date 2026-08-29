@@ -57,7 +57,7 @@ void setup() {
   pinMode(button, INPUT_PULLUP);
 
   //Optional: set Zigbee device name and model
-  zbLight.setManufacturerAndModel("Espressif", "ZBLightBulb");
+  zbLight.setManufacturerAndModel("odelay.io", "XIAO ESP32-C6");
 
   // Set callback function for light change
   zbLight.onLightChange(setLED);
