@@ -36,7 +36,7 @@
 //#       * 5 - LOG_LEVEL_TRACE      errors, warnings, notices & traces 
 //#       * 6 - LOG_LEVEL_VERBOSE    all 
 //#
-//#   Generic XIAO ESP32 + SHT31 Battery Sensor for Home Assistant
+//#   Generic XIAO ESP32 + SHT31 + MAX17048 Battery Sensor for Home Assistant
 //#   (MIT License, based on odelay.io Small Wine Frig sensor)
 //#
 //#   Flash this SAME firmware to any number of boards -- no per-device edits needed.
@@ -57,8 +57,33 @@
 //#   Requires: MQTT integration configured in Home Assistant with discovery
 //#   enabled (it is by default, prefix "homeassistant").
 //#
+//#   Libraries:
+//#       ArduinoMqttClient, ArduinoLog, SHT31 (Rob Tillaart),
+//#       Adafruit MAX1704X  (Library Manager -> "Adafruit MAX1704X")
+//#       https://github.com/adafruit/Adafruit_MAX1704X
+//#
+//#   Hardware (battery monitoring):
+//#       The resistor-divider / ADC battery measurement on A1 (GPIO1/D1) is gone.
+//#       Battery state now comes from an Adafruit MAX17048 breakout on the same
+//#       I2C bus as the SHT31 (gauge = 0x36, SHT31 = 0x44, no conflict):
+//#
+//#           MAX17048 VIN  -> XIAO 3V3
+//#           MAX17048 GND  -> XIAO GND
+//#           MAX17048 SDA  -> XIAO SDA (D4)
+//#           MAX17048 SCL  -> XIAO SCL (D5)
+//#           LiPo JST      -> either MAX17048 JST port
+//#           2nd JST port  -> XIAO battery input (the two ports are in parallel)
+//#
+//#       The MAX17048 stays powered from the cell through deep sleep, so its
+//#       ModelGauge state-of-charge estimate keeps tracking between wakes -- no
+//#       voltage lookup table and no divider calibration needed. D1/A1 is now free.
+//#
 //#   Version History:
 //#       2026-07-06   Generic multi-device version w/ MQTT Discovery
+//#       2026-08-17   Replaced ADC + SoC lookup table with MAX17048 fuel gauge;
+//#                    added battery charge/discharge rate entity; sensor values
+//#                    are published as JSON null when a read fails so HA keeps
+//#                    the last good state instead of showing garbage.
 //#
 //#############################################################################################
 
@@ -68,15 +93,17 @@
 #include "arduino_secrets.h"
 #include "Wire.h"
 #include "SHT31.h"
+#include "Adafruit_MAX1704X.h"
 #include "ArduinoLog.h"
 #include "esp_mac.h"
+#include <math.h>
 
 
 //*********************************************************************
 //    System Parameters (identical for every device)
 //*********************************************************************
 
-#define UPDATE_RATE_SEC     10 // 1 minutes
+#define UPDATE_RATE_SEC     10
 #define uS_TO_SEC_FACTOR    1000000ULL
 
 // Ground Pin D3 and reboot to stop deep sleep (for re-flashing).
@@ -104,6 +131,13 @@ const char DISCOVERY_PREFIX[] = "homeassistant";
 // 3x the sleep interval tolerates a couple of missed cycles.
 #define EXPIRE_AFTER_SEC (UPDATE_RATE_SEC * 3)
 
+// Force the fuel gauge into hibernate mode before deep sleep (23uA -> ~3uA).
+// The MAX17048 already hibernates on its own once the charge rate drops below
+// its hibernation threshold (default 5%/hr), which a sleeping sensor always
+// does, so leave this false unless you want the gauge parked immediately.
+// Forcing it costs a little SoC-tracking resolution right after each wake.
+#define MAX17048_FORCE_HIBERNATE  false
+
 char ssid[]      = SECRET_SSID;
 char pass[]      = SECRET_PASS;
 char mqtt_user[] = SECRET_MQTT_USER;
@@ -111,6 +145,10 @@ char mqtt_pass[] = SECRET_MQTT_PASS;
 
 #define SHT31_ADDRESS   0x44
 SHT31 sht;
+
+// MAX17048 LiPoly / LiIon fuel gauge (I2C 0x36, fixed address)
+Adafruit_MAX17048 maxlipo;
+bool gaugeOK = false;
 
 //*********************************************************************
 //    Globals
@@ -143,66 +181,62 @@ void build_device_identity() {
 }
 
 
-
 //*********************************************************************
-//    Picewise Lookup Table to calculate battery percent
+//    Fuel gauge init
+//    Never block forever waiting for the gauge (unlike the Adafruit
+//    example) -- this runs on battery, so one retry then move on.
 //*********************************************************************
+void fuel_gauge_begin() {
+  gaugeOK = maxlipo.begin(&Wire);
+  if (!gaugeOK) {
+    delay(50);
+    gaugeOK = maxlipo.begin(&Wire);
+  }
 
-// Calibration table: voltage (mV) -> percent. MUST be sorted ascending by mV.
-// Derived from a measured 750 mAh 1S LiPo full discharge (see header).
-struct SocPoint { uint16_t mV; uint8_t pct; };
+  if (!gaugeOK) {
+    Log.error("MAX17048 not found! Battery values will be published as null." CR);
+    return;
+  }
 
-//  // 750mAh Battery Table
-//  const SocPoint SOC_TABLE[] = {
-//    {2745,   0}, {3310,   5}, {3380,  10}, {3430,  15}, {3480,  20},
-//    {3520,  25}, {3560,  30}, {3610,  35}, {3660,  40}, {3700,  45},
-//    {3740,  50}, {3760,  55}, {3800,  60}, {3830,  65}, {3870,  70},
-//    {3910,  75}, {3930,  80}, {3940,  85}, {3950,  90}, {3990,  95},
-//    {4040, 100}
-//  };
+  Log.info("MAX17048 found, chip ID 0x%x" CR, maxlipo.getChipID());
 
-// 1100mAh Battery Table
-const SocPoint SOC_TABLE[] = {
-  {2700,   0}, {3325,   5}, {3395,  10}, {3457,  15}, {3524,  20},
-  {3565,  25}, {3625,  30}, {3695,  35}, {3744,  40}, {3771,  45},
-  {3795,  50}, {3825,  55}, {3855,  60}, {3894,  65}, {3945,  70},
-  {3965,  75}, {3976,  80}, {3986,  85}, {4003,  90}, {4025,  95},
-  {4120, 100}
-};
-const uint8_t SOC_TABLE_LEN = sizeof(SOC_TABLE) / sizeof(SOC_TABLE[0]);
+  if (MAX17048_FORCE_HIBERNATE) {
+    maxlipo.wake();   // gauge was parked before the last deep sleep
+  }
 
-/*
- * Return battery percentage (0-100) for a given cell voltage in VOLTS.
- * Uses linear interpolation between the two nearest table points.
- */
-float batteryPercent(float volts) {
-  uint16_t mV = (uint16_t)(volts * 1000.0f + 0.5f);   // volts -> millivolts
-
-  // Clamp to the ends of the table.
-  if (mV <= SOC_TABLE[0].mV)                return 0.0f;
-  if (mV >= SOC_TABLE[SOC_TABLE_LEN - 1].mV) return 100.0f;
-
-  // Find the segment [i, i+1] that contains mV, then interpolate.
-  for (uint8_t i = 0; i < SOC_TABLE_LEN - 1; i++) {
-    const SocPoint &lo = SOC_TABLE[i];
-    const SocPoint &hi = SOC_TABLE[i + 1];
-    if (mV >= lo.mV && mV <= hi.mV) {
-      float frac = (float)(mV - lo.mV) / (float)(hi.mV - lo.mV);
-      return lo.pct + frac * (hi.pct - lo.pct);
+  // Clear the power-on reset indicator so it doesn't stay latched.
+  // Note: no quickStart() here -- Adafruit warns it resets the charge
+  // calculator, and the gauge self-calibrates within a few cycles anyway.
+  if (maxlipo.isActiveAlert()) {
+    uint8_t flags = maxlipo.getAlertStatus();
+    if (flags & MAX1704X_ALERTFLAG_RESET_INDICATOR) {
+      maxlipo.clearAlertFlag(MAX1704X_ALERTFLAG_RESET_INDICATOR);
+      Log.info("Fuel gauge power-on reset detected (fresh battery?)" CR);
     }
   }
-  return 0.0f;  // unreachable
 }
 
 
-
-
+//*********************************************************************
+//    JSON number formatting: NaN becomes null so HA ignores the value
+//    instead of charting a bogus reading.
+//*********************************************************************
+void fmt_json_float(char* buf, size_t len, float v, uint8_t decimals) {
+  if (isnan(v)) {
+    snprintf(buf, len, "null");
+  } else {
+    snprintf(buf, len, "%.*f", (int)decimals, v);
+  }
+}
 
 
 //*********************************************************************
 //    Sleep (single exit point)
 //*********************************************************************
 void go_to_sleep() {
+  if (MAX17048_FORCE_HIBERNATE && gaugeOK) {
+    maxlipo.hibernate();
+  }
   mqttClient.stop();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
@@ -268,7 +302,7 @@ bool wifi_connect() {
 //*********************************************************************
 void publish_discovery_entity(const char* key,        // JSON key in state payload
                               const char* niceName,   // entity name shown in HA
-                              const char* devClass,   // HA device_class
+                              const char* devClass,   // HA device_class (NULL/"" = none)
                               const char* unit,
                               bool diagnostic = false,  // true => shown in HA "Diagnostic" section
                               int8_t precision = -1) { // decimal places HA should display (-1 = HA default)
@@ -276,19 +310,29 @@ void publish_discovery_entity(const char* key,        // JSON key in state paylo
   snprintf(cfgTopic, sizeof(cfgTopic), "%s/sensor/%s-%s/config",
            DISCOVERY_PREFIX, deviceId, key);
 
+  // device_class is optional: charge rate (%/hr) has no matching HA class
+  char devClassField[48] = "";
+  if (devClass != NULL && devClass[0] != '\0') {
+    snprintf(devClassField, sizeof(devClassField), "\"dev_cla\":\"%s\",", devClass);
+  }
+
   char precisionField[24] = "";
   if (precision >= 0) {
     snprintf(precisionField, sizeof(precisionField), "\"sug_dsp_prc\":%d,", precision);
   }
 
-  char payload[512];
+  // The value template renders to an empty string when the JSON value is
+  // null, which HA treats as "ignore this update" and keeps the last state.
+  // (Testing "is not none" rather than filtering on truthiness keeps a
+  // legitimate reading of 0 from being thrown away.)
+  char payload[640];
   snprintf(payload, sizeof(payload),
     "{"
       "\"name\":\"%s\","
       "\"uniq_id\":\"%s-%s\","
       "\"stat_t\":\"%s\","
-      "\"val_tpl\":\"{{ value_json.%s }}\","
-      "\"dev_cla\":\"%s\","
+      "\"val_tpl\":\"{{ value_json.%s if value_json.%s is not none else '' }}\","
+      "%s"
       "\"unit_of_meas\":\"%s\","
       "\"stat_cla\":\"measurement\","
       "%s"
@@ -298,10 +342,11 @@ void publish_discovery_entity(const char* key,        // JSON key in state paylo
         "\"ids\":[\"%s\"],"
         "\"name\":\"XIAO Sensor %s\","
         "\"mf\":\"odelay.io\","
-        "\"mdl\":\"XIAO ESP32 + SHT31\""
+        "\"mdl\":\"XIAO ESP32 + SHT31 + MAX17048\""
       "}"
     "}",
-    niceName, deviceId, key, stateTopic, key, devClass, unit,
+    niceName, deviceId, key, stateTopic, key, key,
+    devClassField, unit,
     diagnostic ? "\"ent_cat\":\"diagnostic\"," : "",
     precisionField,
     EXPIRE_AFTER_SEC, deviceId, deviceId);
@@ -319,8 +364,11 @@ void publish_discovery() {
   publish_discovery_entity("temperature", "Temperature", "temperature",
                            USE_FAHRENHEIT ? "\u00b0F" : "\u00b0C");
   publish_discovery_entity("humidity",    "Humidity",    "humidity",  "%");
-  publish_discovery_entity("battery",     "Battery",     "battery",   "%");
-  publish_discovery_entity("battery_voltage", "Battery Voltage", "voltage", "V", true, 2);
+  publish_discovery_entity("battery",     "Battery",     "battery",   "%", false, 1);
+  publish_discovery_entity("battery_voltage", "Battery Voltage", "voltage", "V", true, 3);
+  // No HA device_class fits %/hr, so pass NULL and let it be a plain number.
+  // Positive = charging, negative = discharging.
+  publish_discovery_entity("battery_rate", "Battery Charge Rate", NULL, "%/h", true, 1);
   publish_discovery_entity("rssi",        "WiFi Signal", "signal_strength", "dBm", true);
   rtcDiscoverySent = true;
 }
@@ -330,38 +378,64 @@ void publish_discovery() {
 //    Read sensors + publish one JSON state message
 //*********************************************************************
 void update_HA() {
+  //----- SHT31 temperature / humidity -----
   bool sht_success = sht.read(false);
   if (sht_success == false) {
     Log.fatal(F("FAILED: Unable to Read SHT, trying again..." CR));
     delay(20);
     sht_success = sht.read(false);
   }
-  float sht_temp  = USE_FAHRENHEIT ? sht.getFahrenheit() : sht.getTemperature();
-  float sht_humid = sht.getHumidity();
 
-  uint32_t batt_level = 0;
-  for (int i = 0; i < 16; i++) {
-    batt_level += analogReadMilliVolts(A1); // GPIO1/D1
+  float sht_temp  = NAN;
+  float sht_humid = NAN;
+  if (sht_success) {
+    sht_temp  = USE_FAHRENHEIT ? sht.getFahrenheit() : sht.getTemperature();
+    sht_humid = sht.getHumidity();
   }
-  float batt_adc_volts = (batt_level / 16) / 1000.0; // volts measured at the ADC pin
-  // Battery is monitored through a voltage divider, so double the ADC
-  // reading to get the actual battery voltage.
-  float batt_voltage  = batt_adc_volts * 2.0;
-  float batt_percent = batteryPercent(batt_voltage);
+
+  //----- MAX17048 fuel gauge -----
+  // cellVoltage() returns NaN if the gauge can't be read (e.g. no cell
+  // attached), so it gates the other two reads.
+  float batt_voltage = NAN;
+  float batt_percent = NAN;
+  float batt_rate    = NAN;
+
+  if (gaugeOK) {
+    batt_voltage = maxlipo.cellVoltage();
+    if (!isnan(batt_voltage)) {
+      batt_percent = maxlipo.cellPercent();
+      // The gauge can read slightly outside 0-100 while charging or nearly
+      // empty; HA's battery device_class expects a clean percentage.
+      if (batt_percent > 100.0f) batt_percent = 100.0f;
+      if (batt_percent <   0.0f) batt_percent =   0.0f;
+      batt_rate = maxlipo.chargeRate();   // %/hr, negative while discharging
+    } else {
+      Log.warning("Fuel gauge read failed -- battery disconnected?" CR);
+    }
+  }
 
   // WiFi signal strength (dBm). We're already connected, so this is free.
   int8_t rssi = WiFi.RSSI();
 
-  Log.info("T: %F  H: %F  Batt: %F  BattV: %F  RSSI: %d" CR, sht_temp, sht_humid, batt_percent, batt_voltage, rssi);
+  Log.info("T: %F  H: %F  Batt: %F %%  BattV: %F  Rate: %F %%/hr  RSSI: %d" CR,
+           sht_temp, sht_humid, batt_percent, batt_voltage, batt_rate, rssi);
 
-  char payload[160];
+  char sTemp[12], sHumid[12], sPct[12], sVolt[12], sRate[12];
+  fmt_json_float(sTemp,  sizeof(sTemp),  sht_temp,     2);
+  fmt_json_float(sHumid, sizeof(sHumid), sht_humid,    2);
+  fmt_json_float(sPct,   sizeof(sPct),   batt_percent, 2);
+  fmt_json_float(sVolt,  sizeof(sVolt),  batt_voltage, 3);
+  fmt_json_float(sRate,  sizeof(sRate),  batt_rate,    2);
+
+  char payload[224];
   snprintf(payload, sizeof(payload),
-           "{\"temperature\":%.2f,\"humidity\":%.2f,\"battery\":%.2f,\"battery_voltage\":%.2f,\"rssi\":%d}",
-           sht_temp, sht_humid, batt_percent, batt_voltage, rssi);
+           "{\"temperature\":%s,\"humidity\":%s,\"battery\":%s,"
+           "\"battery_voltage\":%s,\"battery_rate\":%s,\"rssi\":%d}",
+           sTemp, sHumid, sPct, sVolt, sRate, rssi);
 
   // retain=true: HA shows the last reading immediately after its own restart,
   // instead of "unknown" until the next wake cycle
-  mqttClient.beginMessage(stateTopic, true, MQTT_QoS, false);
+  mqttClient.beginMessage(stateTopic, strlen(payload), true, MQTT_QoS, false);
   mqttClient.print(payload);
   mqttClient.endMessage();
 }
@@ -384,8 +458,9 @@ void setup() {
   }
 
   Wire.begin();
-  Wire.setClock(400000);
+  Wire.setClock(400000);   // MAX17048 and SHT31 both handle 400 kHz
   sht.begin();
+  fuel_gauge_begin();
   Log.info("Configured I2C Clock" CR);
 
   build_device_identity();
@@ -415,4 +490,3 @@ void setup() {
 void loop() {
   // never reached
 }
-
