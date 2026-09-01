@@ -103,7 +103,7 @@
 //    System Parameters (identical for every device)
 //*********************************************************************
 
-#define UPDATE_RATE_SEC     10
+#define UPDATE_RATE_SEC     60
 #define uS_TO_SEC_FACTOR    1000000ULL
 
 // Ground Pin D3 and reboot to stop deep sleep (for re-flashing).
@@ -119,7 +119,7 @@
 // MQTT Broker
 const char broker[]  = "nuc-sdr";
 int        port      = 1883;
-uint8_t    MQTT_QoS  = 0;
+uint8_t    MQTT_QoS  = 1;
 
 // HA MQTT Discovery prefix (HA default is "homeassistant")
 const char DISCOVERY_PREFIX[] = "homeassistant";

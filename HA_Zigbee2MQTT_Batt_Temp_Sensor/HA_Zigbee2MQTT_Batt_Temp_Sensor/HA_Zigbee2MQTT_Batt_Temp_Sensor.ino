@@ -95,7 +95,7 @@
 
 #define TEMP_SENSOR_ENDPOINT_NUMBER 10
 
-#define TIME_TO_SLEEP_SEC       10    // seconds
+#define TIME_TO_SLEEP_SEC       60    // seconds
 #define uS_TO_SEC_FACTOR        1000000ULL
 #define ZIGBEE_JOIN_TIMEOUT_MS  10000
 #define REPORT_TIMEOUT_MS       1000
