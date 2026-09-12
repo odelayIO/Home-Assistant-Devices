@@ -180,19 +180,8 @@ struct SocPoint {
   uint8_t pct;
 };
 
-//  //--------------------------
-//  // 750mAh Battery Table
-//  //--------------------------
-//  const SocPoint SOC_TABLE[] = {
-//    {2745,   0}, {3310,   5}, {3380,  10}, {3430,  15}, {3480,  20},
-//    {3520,  25}, {3560,  30}, {3610,  35}, {3660,  40}, {3700,  45},
-//    {3740,  50}, {3760,  55}, {3800,  60}, {3830,  65}, {3870,  70},
-//    {3910,  75}, {3930,  80}, {3940,  85}, {3950,  90}, {3990,  95},
-//    {4040, 100}
-//  };
-
 //--------------------------
-// 1100mAh Battery Table
+// Battery Percent Table
 //--------------------------
 const SocPoint SOC_TABLE[] = {
       { 2700, 0 },  { 3325, 5 },  { 3395, 10 }, { 3457, 15 }, { 3524, 20 }, 
@@ -326,6 +315,7 @@ void setup() {
   // POWER: don't start the serial port at all when logging is silent.
 #if LOG_LEVEL > LOG_LEVEL_SILENT
   Serial.begin(115200);
+  delay(1000);  // give the serial port time to start before logging
 #endif
   Log.begin(LOG_LEVEL, &Serial);
   Log.info("Booting..." CR);
@@ -445,6 +435,7 @@ void setup() {
   zigbeeConfig.nwk_cfg.zed_cfg.keep_alive = 10000;
 
   // POWER: shorter rejoin scan (see ZIGBEE_SCAN_DURATION above).
+  // NOTE: I tried ZIGBEE_SCAN_DURATION = 1, and it increased timeouts
   Zigbee.setScanDuration(ZIGBEE_SCAN_DURATION);
 
   // EXPERIMENT (measure with the PPK2, then re-pair the device in Z2M/ZHA):
