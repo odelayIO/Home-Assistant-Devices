@@ -70,3 +70,15 @@ Temperature Sensor Parameters:
 **Results**:
 
 ![image-20260912062422091](./image-20260912062422091.png)
+
+
+
+### Notes:
+
+| Parameter                                         | Measurement    |
+| ------------------------------------------------- | -------------- |
+| Sleep Consumption                                 | 12.53uA        |
+| Wake Duration without Zigbee Update (Avg Current) | 60ms @ 30mA    |
+| Wake Duration with Zigbee Update (Avg Current)    | 450ms @ 66.8mA |
+| Average Consumption (5 hours)                     | 57.82uA        |
+

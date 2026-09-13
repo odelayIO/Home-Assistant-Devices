@@ -115,3 +115,48 @@ void loop() {
 
 ```
 
+
+
+## Optimize Power Consumption
+
+```c++
+//*********************************************************************
+//    System Parameters (identical for every device)
+//*********************************************************************
+
+#define UPDATE_RATE_SEC     300 // seconds between sensor checks
+#define uS_TO_SEC_FACTOR    1000000ULL
+
+// Only connect WiFi and publish when the temperature changes enough or the
+// heartbeat is due. Values survive deep sleep in RTC memory.
+#define TEMP_DELTA_F        0.5f  // publish temperature if it moved this much
+#define HEARTBEAT_UPDATES   6     // publish at least once every N checks
+
+// Ground Pin D3 and reboot to stop deep sleep (for re-flashing).
+// Holding it LOW also forces discovery configs to be re-published.
+#define MONITOR_PIN D3 // GPIO21
+
+#define WIFI_FAST_TIMEOUT_MS    5000
+#define WIFI_FULL_TIMEOUT_MS    20000
+
+//#define LOG_LEVEL LOG_LEVEL_VERBOSE
+#define LOG_LEVEL LOG_LEVEL_SILENT
+```
+
+
+
+### Measurements:
+
+| Parameter                                       | Measurement               |
+| ----------------------------------------------- | ------------------------- |
+| Sleep Consumption                               | 12.50uA                   |
+| Wake Duration without MQTT Update (Avg Current) | 110ms @ 22mA              |
+| Wake Duration with MQTT Update (Avg Current)    | 1600ms @ 83.4mA           |
+| MQTT Message Duration                           | min: 1.6 sec, max 6.8 sec |
+| Average Consumption (5 hours)                   | 180uA                     |
+
+![image-20260913095851245](./image-20260913095851245.png)
+
+#### Note:
+
+- Currently I'm using DHCP, if I use static IP, then it is estimated to drop the average current to 120uA.

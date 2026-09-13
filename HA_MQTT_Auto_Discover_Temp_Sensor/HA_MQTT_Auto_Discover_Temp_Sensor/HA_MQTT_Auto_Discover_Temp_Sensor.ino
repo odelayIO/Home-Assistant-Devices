@@ -77,7 +77,7 @@
 //    System Parameters (identical for every device)
 //*********************************************************************
 
-#define UPDATE_RATE_SEC     10 // seconds between sensor checks
+#define UPDATE_RATE_SEC     300 // seconds between sensor checks
 #define uS_TO_SEC_FACTOR    1000000ULL
 
 // Only connect WiFi and publish when the temperature changes enough or the
@@ -98,7 +98,7 @@
 // MQTT Broker
 const char broker[]  = "nuc-sdr";
 int        port      = 1883;
-uint8_t    MQTT_QoS  = 0;
+uint8_t    MQTT_QoS  = 1;
 
 // HA MQTT Discovery prefix (HA default is "homeassistant")
 const char DISCOVERY_PREFIX[] = "homeassistant";
@@ -385,7 +385,7 @@ void setup() {
   // the serial peripheral setup and keeps silent builds free of serial output.
 #if LOG_LEVEL > LOG_LEVEL_SILENT
   Serial.begin(115200);
-  delay(1000);  // give the serial port time to start before logging
+  delay(3000);  // give the serial port time to start before logging
 #endif
   Log.begin(LOG_LEVEL, &Serial);
   Log.info("Booting..." CR);
